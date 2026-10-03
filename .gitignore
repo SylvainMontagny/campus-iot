@@ -1,0 +1,33 @@
+node_modules/
+
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Local editor and operating-system files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Runtime, cache, temporary, and backup files
+*.log
+npm-debug.log*
+*.tmp
+*.bak
+.cache/
+coverage/
+
+# Local application data may contain credentials or private device details
+data/config.json
+data/config.json.tmp
+data/connections.json
+data/connections.json.tmp
+data/deviceList.json
+data/deviceList.json.tmp
