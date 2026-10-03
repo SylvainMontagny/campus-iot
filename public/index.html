@@ -17,7 +17,7 @@
         <span><strong>LoRaBAC</strong><small>Campus IoT Platform</small></span>
       </a>
       <div class="topbar-right">
-        <span id="connection-state" class="connection-state"><span class="state-dot"></span>Connecting</span>
+        <span id="mqtt-state" class="connection-state"><span class="state-dot state-dot-offline"></span>MQTT offline</span>
         <button id="import-button" class="button button-quiet" type="button">Import JSON</button>
         <button id="export-button" class="button button-quiet" type="button">Export JSON</button>
         <button id="save-button" class="button button-primary" type="button">Save configuration</button>
@@ -28,6 +28,11 @@
     <main class="workspace">
       <aside class="rail" aria-label="Configuration navigation">
         <div class="rail-heading"><span class="eyebrow">WORKSPACE</span><span id="device-count" class="count">0</span></div>
+        <button class="device-nav-item mqtt-nav-item" type="button" data-select-view="mqtt">
+          <span class="device-glyph mqtt-glyph" aria-hidden="true">M</span>
+          <span class="device-nav-copy"><strong>MQTT connection</strong><small id="mqtt-nav-status">Disconnected</small></span>
+          <span id="mqtt-nav-dot" class="nav-status-dot" aria-hidden="true"></span>
+        </button>
         <button class="device-nav-item global-nav-item is-selected" type="button" data-select-view="global">
           <span class="device-glyph" aria-hidden="true">G</span>
           <span class="device-nav-copy"><strong>BMS connections</strong><small id="connection-count">0 named profiles</small></span>
@@ -38,6 +43,10 @@
         <div class="rail-title">Device types</div>
         <nav id="device-navigation" class="device-navigation" aria-label="Device types"></nav>
         <button id="add-device-button" class="add-device-button" type="button" data-action="add-device"><span aria-hidden="true">+</span> Add device type</button>
+        <button class="device-nav-item mqtt-nav-item" type="button" data-select-view="log">
+          <span class="device-glyph mqtt-glyph" aria-hidden="true">L</span>
+          <span class="device-nav-copy"><strong>Message log</strong><small>Incoming packets</small></span>
+        </button>
         <div class="rail-foot"><span class="rail-indicator"></span> Local configuration</div>
       </aside>
 
@@ -64,6 +73,44 @@
         </section>
 
         <section id="device-editor" class="config-section device-section" aria-live="polite" hidden></section>
+
+        <section id="mqtt-section" class="config-section mqtt-section" aria-labelledby="mqtt-title" hidden>
+          <div class="section-heading">
+            <div><span class="section-index mqtt-section-index">MQ</span><h2 id="mqtt-title">MQTT broker</h2></div>
+            <span id="mqtt-section-state" class="mqtt-section-state">Disconnected</span>
+          </div>
+          <div class="field-grid mqtt-fields">
+            <div class="field-pair">
+              <label class="field"><span>Server</span><input id="mqtt-server" type="text" placeholder="broker.example.org" autocomplete="url"></label>
+              <label class="field"><span>Port</span><input id="mqtt-port" type="number" min="1" max="65535" value="1883" inputmode="numeric"></label>
+            </div>
+            <div class="field-pair">
+              <label class="field"><span>Login</span><input id="mqtt-username" type="text" autocomplete="username"></label>
+              <label class="field"><span>Password</span><input id="mqtt-password" type="password" autocomplete="current-password"></label>
+            </div>
+            <div class="field-row">
+              <label class="field"><span>Topic</span><input id="mqtt-topic" type="text" placeholder="#" autocomplete="off"></label>
+            </div>
+          </div>
+          <div class="mqtt-actions">
+            <button id="mqtt-connect-button" class="button button-primary" type="button">Connect &amp; Save</button>
+            <button id="mqtt-disconnect-button" class="button button-outline" type="button" disabled>Disconnect</button>
+          </div>
+          <section class="mqtt-log-section" aria-labelledby="mqtt-raw-title">
+            <div class="mqtt-log-heading"><div><span class="eyebrow">RAW MQTT</span><h3 id="mqtt-raw-title">Raw messages</h3></div><span class="mqtt-log-tools"><span id="mqtt-raw-count" class="mqtt-log-count">0 entries</span><button class="button button-outline" type="button" data-toggle-log="raw">Suspend</button><button class="button button-outline" type="button" data-clear-log="mqtt-raw-log">Clear logs</button></span></div>
+            <div id="mqtt-raw-log" class="mqtt-log" role="log" aria-live="polite" aria-relevant="additions"></div>
+          </section>
+        </section>
+
+        <section id="log-section" class="config-section mqtt-section" aria-labelledby="log-title" hidden>
+          <div class="section-heading">
+            <div><span class="section-index mqtt-section-index">LG</span><h2 id="log-title">Incoming packets</h2></div>
+          </div>
+          <section class="mqtt-log-section" aria-labelledby="mqtt-log-title">
+            <div class="mqtt-log-heading"><div><span class="eyebrow">LIVE ACTIVITY</span><h3 id="mqtt-log-title">Message log</h3></div><span class="mqtt-log-tools"><span id="mqtt-log-count" class="mqtt-log-count">0 entries</span><button class="button button-outline" type="button" data-toggle-log="log">Suspend</button><button class="button button-outline" type="button" data-clear-log="mqtt-log">Clear logs</button></span></div>
+            <div id="mqtt-log" class="mqtt-log" role="log" aria-live="polite" aria-relevant="additions"></div>
+          </section>
+        </section>
 
         <footer class="page-footer"><span>LoRaBAC configuration service</span><span>Configuration is stored locally on this server.</span></footer>
       </section>

@@ -29,5 +29,7 @@ data/config.json
 data/config.json.tmp
 data/connections.json
 data/connections.json.tmp
+data/mqtt-connection.json
+data/mqtt-connection.json.tmp
 data/deviceList.json
 data/deviceList.json.tmp

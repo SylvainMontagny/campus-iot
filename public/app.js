@@ -5,7 +5,10 @@ const state = {
   selectedView: "global",
   expandedDevices: {},
   expandedObjects: {},
-  noticeTimer: null
+  noticeTimer: null,
+  mqttLogId: 0,
+  mqttRawId: 0,
+  paused: { log: false, raw: false }
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -198,6 +201,8 @@ function renderNavigation() {
   if (!connections.some(([name]) => name === state.selectedConnection)) state.selectedConnection = connections[0]?.[0] ?? null;
   if (!entries.some(([name]) => name === state.selectedDevice)) state.selectedDevice = entries[0]?.[0] ?? null;
   $("[data-select-view='global']").classList.toggle("is-selected", state.selectedView === "global");
+  $("[data-select-view='mqtt']").classList.toggle("is-selected", state.selectedView === "mqtt");
+  $("[data-select-view='log']").classList.toggle("is-selected", state.selectedView === "log");
   $("#connection-navigation").innerHTML = connections.map(([name]) => `
     <button class="device-nav-item connection-nav-item${state.selectedView === "global" && name === state.selectedConnection ? " is-selected" : ""}" type="button" data-select-connection="${escapeHtml(name)}">
       <span class="device-glyph connection-glyph" aria-hidden="true">↔</span>
@@ -308,12 +313,20 @@ function render() {
   renderGlobal();
   renderDevice();
   const showingGlobal = state.selectedView === "global";
+  const showingMqtt = state.selectedView === "mqtt";
+  const showingLog = state.selectedView === "log";
   $(".global-section").hidden = !showingGlobal;
-  $("#device-editor").hidden = showingGlobal;
-  $("#page-title").textContent = showingGlobal ? (state.selectedConnection || "BMS connections") : "Device configuration";
+  $("#device-editor").hidden = showingGlobal || showingMqtt || showingLog;
+  $("#mqtt-section").hidden = !showingMqtt;
+  $("#log-section").hidden = !showingLog;
+  $("#page-title").textContent = showingGlobal
+    ? (state.selectedConnection || "BMS connections")
+    : showingMqtt ? "MQTT connection" : showingLog ? "Message log" : "Device configuration";
   $("#page-description").textContent = showingGlobal
     ? "Reusable settings that can be assigned to device types."
-    : "Device fleet settings and BACnet object mapping.";
+    : showingMqtt ? "Subscribe to uplink messages and inspect the raw MQTT traffic."
+      : showingLog ? "Incoming packets and the mapped device output."
+        : "Device fleet settings and BACnet object mapping.";
 }
 
 function showNotice(message, kind = "success") {
@@ -428,7 +441,8 @@ async function saveConfig() {
     showNotice(result.errors?.map((error) => `${error.path}: ${error.message}`).join(" | ") || result.error, "error");
     return;
   }
-  showNotice("Device list saved to this server.");
+  const mqttSaved = await saveMqttSettings();
+  showNotice(mqttSaved ? "Device list and MQTT connection saved to this server." : "Device list saved, but the MQTT connection could not be saved.", mqttSaved ? undefined : "error");
 }
 
 async function loadConfig() {
@@ -440,13 +454,188 @@ async function loadConfig() {
     state.config.deviceConnections ||= {};
     state.config.deviceList ||= {};
     for (const deviceName of Object.keys(state.config.deviceList)) state.config.deviceConnections[deviceName] ||= "";
-    $("#connection-state").innerHTML = `<span class="state-dot"></span>Connected`;
   } catch (error) {
     state.config = defaultConfig();
-    $("#connection-state").innerHTML = `<span class="state-dot state-dot-offline"></span>Offline`;
     showNotice("The server could not be reached. Changes will not persist until it is running.", "error");
   }
   render();
+}
+
+function setMqttStatus(status) {
+  const connectionState = status.state || "disconnected";
+  const labels = { connected: "Connected", connecting: "Connecting", error: "Connection error", disconnected: "Disconnected" };
+  const headerLabel = connectionState === "disconnected" ? "MQTT offline" : `MQTT ${labels[connectionState] || connectionState}`;
+  const dotClass = connectionState === "connected" ? "state-dot-connected"
+    : connectionState === "connecting" ? "state-dot-connecting" : "state-dot-offline";
+  const header = $("#mqtt-state");
+  const dot = document.createElement("span");
+  dot.className = `state-dot ${dotClass}`;
+  header.replaceChildren(dot, document.createTextNode(headerLabel));
+  $("#mqtt-section-state").textContent = labels[connectionState] || connectionState;
+  $("#mqtt-nav-status").textContent = labels[connectionState] || connectionState;
+  $("#mqtt-nav-dot").classList.toggle("is-connected", connectionState === "connected");
+  $("#mqtt-connect-button").disabled = connectionState === "connecting" || connectionState === "connected";
+  $("#mqtt-disconnect-button").disabled = connectionState === "disconnected";
+}
+
+function appendMqttLog(entry) {
+  const log = $("#mqtt-log");
+  const row = document.createElement("article");
+  row.className = `mqtt-log-entry mqtt-log-${entry.level}`;
+  const meta = document.createElement("div");
+  meta.className = "mqtt-log-meta";
+  const level = document.createElement("span");
+  level.className = "mqtt-log-level";
+  level.textContent = entry.level;
+  const timestamp = document.createElement("time");
+  timestamp.dateTime = entry.timestamp;
+  timestamp.textContent = new Date(entry.timestamp).toLocaleTimeString();
+  meta.append(level, timestamp);
+  const message = document.createElement("pre");
+  message.className = "mqtt-log-message";
+  message.textContent = entry.message;
+  row.append(meta, message, createCopyButton(() => `${entry.level} ${entry.timestamp}\n${entry.message}`));
+  prependLogRow(log, row, $("#mqtt-log-count"));
+}
+
+function createCopyButton(getText) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "mqtt-copy-button";
+  button.title = "Copy";
+  button.setAttribute("aria-label", "Copy log entry");
+  button.textContent = "⧉";
+  button.addEventListener("click", async () => {
+    try {
+      await navigator.clipboard.writeText(getText());
+      button.textContent = "✓";
+    } catch {
+      button.textContent = "!";
+    }
+    setTimeout(() => { button.textContent = "⧉"; }, 1200);
+  });
+  return button;
+}
+
+function appendRawMqttMessage(entry) {
+  const log = $("#mqtt-raw-log");
+  const row = document.createElement("article");
+  row.className = "mqtt-log-entry mqtt-raw-entry";
+  const meta = document.createElement("div");
+  meta.className = "mqtt-log-meta";
+  const timestamp = document.createElement("time");
+  timestamp.dateTime = entry.timestamp;
+  timestamp.textContent = new Date(entry.timestamp).toLocaleTimeString();
+  const topic = document.createElement("span");
+  topic.className = "mqtt-log-topic";
+  topic.textContent = entry.topic;
+  meta.append(timestamp, topic);
+  const message = document.createElement("pre");
+  message.className = "mqtt-log-message";
+  message.textContent = entry.payload;
+  row.append(meta, message, createCopyButton(() => `${entry.topic}\n${entry.payload}`));
+  prependLogRow(log, row, $("#mqtt-raw-count"));
+}
+
+function prependLogRow(log, row, counter) {
+  log.querySelector(".mqtt-log-empty")?.remove();
+  log.prepend(row);
+  while (log.children.length > 300) log.lastElementChild.remove();
+  counter.textContent = `${log.querySelectorAll(".mqtt-log-entry").length} entries`;
+  log.scrollTop = 0;
+}
+
+function clearLog(logId) {
+  const log = $(`#${logId}`);
+  log.innerHTML = `<div class="mqtt-log-empty">${logId === "mqtt-raw-log" ? "No raw MQTT messages yet." : "No MQTT activity yet."}</div>`;
+  $(logId === "mqtt-raw-log" ? "#mqtt-raw-count" : "#mqtt-log-count").textContent = "0 entries";
+}
+
+function readMqttForm() {
+  return {
+    server: $("#mqtt-server").value,
+    port: $("#mqtt-port").value,
+    username: $("#mqtt-username").value,
+    password: $("#mqtt-password").value,
+    topic: $("#mqtt-topic").value
+  };
+}
+
+async function saveMqttSettings() {
+  try {
+    const response = await fetch("/api/mqtt/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(readMqttForm())
+    });
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+
+async function loadMqttSettings() {
+  try {
+    const response = await fetch("/api/mqtt/settings");
+    if (!response.ok) return;
+    const settings = await response.json();
+    for (const field of ["server", "port", "username", "password", "topic"]) {
+      if (settings[field]) $(`#mqtt-${field}`).value = settings[field];
+    }
+  } catch {
+    // Saved settings are optional.
+  }
+}
+
+async function connectMqtt() {
+  const settings = readMqttForm();
+  await saveMqttSettings();
+  try {
+    const response = await fetch("/api/mqtt/connect", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(settings)
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || "Unable to connect to the MQTT broker.");
+    setMqttStatus(result);
+    await refreshMqtt();
+  } catch (error) {
+    showNotice(error.message, "error");
+  }
+}
+
+async function disconnectMqtt() {
+  try {
+    const response = await fetch("/api/mqtt/disconnect", { method: "POST" });
+    if (!response.ok) throw new Error("Unable to disconnect from the MQTT broker.");
+    setMqttStatus(await response.json());
+  } catch (error) {
+    showNotice(error.message, "error");
+  }
+}
+
+async function refreshMqtt() {
+  try {
+    const [statusResponse, logsResponse, rawResponse] = await Promise.all([
+      fetch("/api/mqtt/status"),
+      fetch(`/api/mqtt/logs?after=${state.mqttLogId}`),
+      fetch(`/api/mqtt/raw?after=${state.mqttRawId}`)
+    ]);
+    if (!statusResponse.ok || !logsResponse.ok || !rawResponse.ok) return;
+    setMqttStatus(await statusResponse.json());
+    const result = await logsResponse.json();
+    for (const entry of state.paused.log ? [] : result.entries) {
+      appendMqttLog(entry);
+      state.mqttLogId = entry.id;
+    }
+    for (const entry of state.paused.raw ? [] : (await rawResponse.json()).entries) {
+      appendRawMqttMessage(entry);
+      state.mqttRawId = entry.id;
+    }
+  } catch {
+    setMqttStatus({ state: "disconnected" });
+  }
 }
 
 document.addEventListener("change", (event) => {
@@ -509,6 +698,23 @@ document.addEventListener("change", (event) => {
 });
 
 document.addEventListener("click", async (event) => {
+  const clearButton = event.target.closest("[data-clear-log]");
+  if (clearButton) clearLog(clearButton.dataset.clearLog);
+  const toggleButton = event.target.closest("[data-toggle-log]");
+  if (toggleButton) {
+    const key = toggleButton.dataset.toggleLog;
+    state.paused[key] = !state.paused[key];
+    toggleButton.textContent = state.paused[key] ? "Resume" : "Suspend";
+  }
+  if (event.target.closest("#mqtt-connect-button")) {
+    await connectMqtt();
+    return;
+  }
+  if (event.target.closest("#mqtt-disconnect-button")) {
+    await disconnectMqtt();
+    return;
+  }
+
   const panelToggle = event.target.closest("[data-panel-toggle]");
   if (panelToggle) {
     const expanded = panelToggle.getAttribute("aria-expanded") !== "true";
@@ -679,3 +885,8 @@ $("#import-file").addEventListener("change", async (event) => {
 });
 
 loadConfig();
+loadMqttSettings();
+clearLog("mqtt-log");
+clearLog("mqtt-raw-log");
+refreshMqtt();
+setInterval(refreshMqtt, 1200);
