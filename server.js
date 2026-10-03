@@ -72,6 +72,11 @@ async function writeConfig(config, directory = dataDirectory) {
   const deviceListPath = path.join(directory, "deviceList.json");
   await fs.mkdir(directory, { recursive: true });
   await writeJsonAtomically(deviceListPath, config.deviceList);
+  // Informational snapshot only: readConfig rebuilds connections from deviceList.json.
+  await writeJsonAtomically(path.join(directory, "connections.json"), {
+    connections: config.connections || {},
+    deviceConnections: config.deviceConnections || {}
+  });
 }
 
 async function writeJsonAtomically(filePath, value) {

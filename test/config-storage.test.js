@@ -48,7 +48,8 @@ test("stores only the device map in deviceList.json", async (context) => {
   await writeConfig(materialized, directory);
   const savedDeviceList = JSON.parse(await fs.readFile(path.join(directory, "deviceList.json"), "utf8"));
   assert.equal(savedDeviceList.sensor.controller.ipAddress, "10.20.30.40");
-  await assert.rejects(fs.access(path.join(directory, "connections.json")), { code: "ENOENT" });
+  const savedConnections = JSON.parse(await fs.readFile(path.join(directory, "connections.json"), "utf8"));
+  assert.equal(savedConnections.connections.Office.ipAddress, "10.20.30.40");
 
   const restored = await readConfig(directory);
   assert.deepEqual(restored.deviceList, savedDeviceList);

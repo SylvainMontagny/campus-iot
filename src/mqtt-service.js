@@ -1,4 +1,5 @@
 const mqtt = require("mqtt");
+const { processRestApiBacnet } = require("./restapi-bacnet");
 
 const MAX_LOG_ENTRIES = 300;
 const NETWORKS = {
@@ -137,7 +138,8 @@ function mapIncomingPacket(topic, rawPayload, deviceList) {
   return { device };
 }
 
-function createMqttService({ getDeviceList, onLog = () => {}, clientFactory = mqtt.connect } = {}) {
+function createMqttService({ getDeviceList, onLog = () => {}, clientFactory = mqtt.connect, restApiBacnetHandler = processRestApiBacnet } = {}) {
+  const previousValues = {};
   let client = null;
   let state = "disconnected";
   let settings = null;
@@ -230,7 +232,12 @@ function createMqttService({ getDeviceList, onLog = () => {}, clientFactory = mq
           const deviceList = await getDeviceList();
           const result = mapIncomingPacket(receivedTopic, payload, deviceList);
           if (result.error) addLog("error", result.error, result.details);
-          else if (result.device) addLog("output", `Device object output:\n${JSON.stringify(result.device, null, 2)}`, result.device);
+          else if (result.device) {
+            addLog("output", `Device object output:\n${JSON.stringify(result.device, null, 2)}`, result.device);
+            if (result.device.controller?.protocol === "restAPIBacnet") {
+              await restApiBacnetHandler(result.device, { previousValues, log: addLog });
+            }
+          }
         } catch (error) {
           addLog("error", error.message || String(error));
         }

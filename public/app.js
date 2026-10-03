@@ -190,7 +190,7 @@ function renderGlobal() {
   if (global.protocol === "restAPIBacnet") {
     fields.push(`<div class="field-pair">${inputField("Login", "bacnetLogin", global.bacnetLogin)}${inputField("Password", "bacnetPassword", global.bacnetPassword, { secret: true })}</div>`);
   }
-  $("#global-form").innerHTML = fields.map((html) => html.replace("data-path=", "data-connection-field=")).join("");
+  $("#global-form").innerHTML = fields.map((html) => html.replaceAll("data-path=", "data-connection-field=")).join("");
 }
 
 function renderNavigation() {
