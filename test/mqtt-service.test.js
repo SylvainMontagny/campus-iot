@@ -45,7 +45,6 @@ test("maps a TTS uplink to a cloned device output", () => {
   assert.equal(result.device.bacnet.objects.temperature.objectType, 2);
   assert.equal(result.device.mqtt.topicDownlink, "v3/app/devices/sensor-2/down");
   assert.deepEqual(result.device.bacnet.uplinkKeys, ["temperature"]);
-  assert.deepEqual(result.device.influxdb, { source: "uplink" });
   assert.equal(deviceList.sensor.identity.deviceName, undefined);
   assert.equal(deviceList.sensor.bacnet.objects.temperature.instanceNum, 1);
 });

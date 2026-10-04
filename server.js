@@ -1,6 +1,7 @@
 const express = require("express");
 const fs = require("node:fs/promises");
 const path = require("node:path");
+const { isDeepStrictEqual } = require("node:util");
 const { validateConfig } = require("./src/config-validation");
 const { createDefaultConfig } = require("./src/default-config");
 const { createMqttService } = require("./src/mqtt-service");
@@ -237,7 +238,14 @@ app.put("/api/config", async (request, response, next) => {
       return;
     }
 
+    const previousDeviceList = (await readConfig()).deviceList;
     await writeConfig(config);
+    // previousValues is keyed by device name, so every device of a changed type is cleared.
+    for (const deviceType of new Set([...Object.keys(previousDeviceList), ...Object.keys(config.deviceList)])) {
+      if (!isDeepStrictEqual(previousDeviceList[deviceType], config.deviceList[deviceType])) {
+        mqttService.clearPreviousValues(deviceType);
+      }
+    }
     response.json({ saved: true });
   } catch (error) {
     next(error);

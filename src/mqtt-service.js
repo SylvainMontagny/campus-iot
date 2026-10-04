@@ -139,7 +139,6 @@ function mapIncomingPacket(topic, rawPayload, deviceList) {
   }
 
   device.transmitTime = Date.now();
-  device.influxdb = { source: "uplink" };
   return { device };
 }
 
@@ -302,7 +301,13 @@ function createMqttService({ getDeviceList, onLog = () => {}, clientFactory = mq
     return getStatus();
   }
 
-  return { connect, disconnect, getStatus, getLogs, getRawMessages, publish };
+  function clearPreviousValues(deviceType) {
+    for (const [deviceName, entry] of Object.entries(previousValues)) {
+      if (entry.identity?.deviceType === deviceType) delete previousValues[deviceName];
+    }
+  }
+
+  return { connect, disconnect, getStatus, getLogs, getRawMessages, publish, clearPreviousValues };
 }
 
 module.exports = { createMqttService, mapIncomingPacket };
