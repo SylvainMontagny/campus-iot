@@ -278,7 +278,9 @@ function createMqttService({ getDeviceList, onLog = () => {}, clientFactory = mq
             const name = result.device.identity.deviceName;
             deviceLog("output", `previousValues of ${name} after MQTT reception:\n${JSON.stringify(previousValues[name] ?? null, null, 2)}`, structuredClone(previousValues[name] ?? null), "previousValuesMqtt");
             const protocolHandler = protocolHandlers[result.device.controller?.protocol];
-            if (protocolHandler) {
+            if (Object.keys(result.device.bacnet.objects).length === 0) {
+              addLog("warning", `${name}: Device type '${result.device.identity.deviceType}' has no association between LoRa payload and BACnet object`);
+            } else if (protocolHandler) {
               const outcome = await protocolHandler(result.device, { previousValues, log: deviceLog });
               if (outcome?.ok) await sendDownlink(result.device, deviceLog);
             }

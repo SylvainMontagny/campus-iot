@@ -271,8 +271,8 @@ function renderDevice() {
       ${actilityFields}
       </div>
     </section>
-    <div class="objects-heading"><div><span class="eyebrow">BACNET MAPPING</span><h2>Objects <span class="object-count">${Object.keys(objects).length}</span></h2></div><button class="button button-outline" type="button" data-action="add-object">+ Add object</button></div>
-    <div class="object-list">${Object.entries(objects).map(([objectName, object]) => renderObject(objectName, object)).join("") || `<div class="empty-objects">No BACnet objects. Add an object to map decoded payload values.</div>`}</div>`;
+    <div class="objects-heading"><div><h2>Mapping between LoRaWAN payloads and BACnet objects <span class="object-count">${Object.keys(objects).length}</span></h2></div><button class="button button-outline" type="button" data-action="add-object">+ Add object</button></div>
+    <div class="object-list">${Object.entries(objects).map(([objectName, object]) => renderObject(objectName, object)).join("") || `<div class="empty-objects">No correspondence yet. Add a correspondence between LoRaWAN payload and BACnet object.</div>`}</div>`;
 }
 
 function renderObject(name, object) {
