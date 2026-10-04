@@ -1,8 +1,11 @@
 const mqtt = require("mqtt");
 const { processRestApiBacnet } = require("./restapi-bacnet");
+const { prepareDownlink, protocolLabel } = require("./downlink");
 
 const MAX_LOG_ENTRIES = 300;
 const RECONNECT_PERIOD_MS = 20000;
+// Our own downlink publications come back when subscribed to a wildcard topic.
+const DOWNLINK_TOPIC = /(\/down\/(push|replace)|\/command\/down|\/downlink)$/;
 const NETWORKS = {
   tts: { uplinkSuffix: "/up", downlinkSuffix: "/down" },
   chirpstack: { uplinkSuffix: "/event/up", downlinkSuffix: "/command/down" },
@@ -165,6 +168,19 @@ function createMqttService({ getDeviceList, onLog = () => {}, clientFactory = mq
     onLog(entry);
   }
 
+  async function sendDownlink(device, deviceLog) {
+    const name = device.identity.deviceName;
+    const message = prepareDownlink(device, previousValues, deviceLog);
+    if (!message) return;
+    try {
+      await publish(message.topic, message.payload);
+    } catch (error) {
+      addLog("error", `${name}: Downlink publication failed: ${error.message}`);
+      return;
+    }
+    deviceLog("info", `${name} (${protocolLabel(device)}): TX time = ${Date.now() - device.transmitTime}ms`, undefined, "txTime");
+  }
+
   function getStatus() {
     return {
       state,
@@ -176,6 +192,16 @@ function createMqttService({ getDeviceList, onLog = () => {}, clientFactory = mq
 
   function getLogs(after = 0) {
     return logs.filter((entry) => entry.id > after);
+  }
+
+  function publish(topic, payload) {
+    return new Promise((resolve, reject) => {
+      if (!client || state !== "connected") {
+        reject(new Error("MQTT client is not connected"));
+        return;
+      }
+      client.publish(topic, JSON.stringify(payload), (error) => (error ? reject(error) : resolve()));
+    });
   }
 
   function disconnect() {
@@ -229,6 +255,7 @@ function createMqttService({ getDeviceList, onLog = () => {}, clientFactory = mq
       activeClient.on("message", async (receivedTopic, payload) => {
         if (client !== activeClient) return;
         addRawMessage(receivedTopic, payload);
+        if (DOWNLINK_TOPIC.test(receivedTopic)) return;
         try {
           const deviceList = await getDeviceList();
           const result = mapIncomingPacket(receivedTopic, payload, deviceList);
@@ -240,8 +267,11 @@ function createMqttService({ getDeviceList, onLog = () => {}, clientFactory = mq
               if (level === "error" || debug.includes(category) || (level !== "output" && debug.includes("all"))) addLog(level, message, details);
             };
             deviceLog("output", `Device object after MQTT reception:\n${JSON.stringify(result.device, null, 2)}`, result.device, "deviceMqtt");
+            const name = result.device.identity.deviceName;
+            deviceLog("output", `previousValues of ${name} after MQTT reception:\n${JSON.stringify(previousValues[name] ?? null, null, 2)}`, structuredClone(previousValues[name] ?? null), "previousValuesMqtt");
             if (result.device.controller?.protocol === "restAPIBacnet") {
-              await restApiBacnetHandler(result.device, { previousValues, log: deviceLog });
+              const outcome = await restApiBacnetHandler(result.device, { previousValues, log: deviceLog });
+              if (outcome?.ok) await sendDownlink(result.device, deviceLog);
             }
           }
         } catch (error) {
@@ -269,7 +299,7 @@ function createMqttService({ getDeviceList, onLog = () => {}, clientFactory = mq
     return getStatus();
   }
 
-  return { connect, disconnect, getStatus, getLogs, getRawMessages };
+  return { connect, disconnect, getStatus, getLogs, getRawMessages, publish };
 }
 
 module.exports = { createMqttService, mapIncomingPacket };

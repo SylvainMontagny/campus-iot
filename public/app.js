@@ -1,4 +1,4 @@
-const state = {
+﻿const state = {
   config: null,
   selectedDevice: null,
   selectedConnection: null,
@@ -266,6 +266,8 @@ function renderDevice() {
       <div class="check-grid">${checkbox("All events", debug.includes("all"), "all")}${checkbox("Uplink events", debug.includes("up"), "up")}${checkbox("Downlink events", debug.includes("down"), "down")}${checkbox("Creation events", debug.includes("creation"), "creation")}${checkbox("Transmit time", debug.includes("txTime"), "txTime")}</div>
       <div class="subsection-heading debug-heading"><div><h3>Print device object</h3></div></div>
       <div class="check-grid">${checkbox("After MQTT reception", debug.includes("deviceMqtt"), "deviceMqtt")}${checkbox("After uplink process", debug.includes("deviceUplink"), "deviceUplink")}${checkbox("After downlink process", debug.includes("deviceDownlink"), "deviceDownlink")}</div>
+      <div class="subsection-heading debug-heading"><div><h3>Print previousValues</h3></div></div>
+      <div class="check-grid">${checkbox("After MQTT reception", debug.includes("previousValuesMqtt"), "previousValuesMqtt")}</div>
       ${actilityFields}
       </div>
     </section>
@@ -279,6 +281,11 @@ function renderObject(name, object) {
   const objectExpanded = Boolean(state.expandedObjects[objectKey]);
   const range = Array.isArray(object.range) ? object.range : [0, 100];
   const instanceLabel = object.assignementMode === "manual" ? "Instance number" : "Instance number offset";
+  const uplinkNames = Object.entries(state.config.deviceList[state.selectedDevice]?.bacnet?.objects || {})
+    .filter(([, candidate]) => candidate.dataDirection === "uplink")
+    .map(([candidateName]) => candidateName);
+  if (object.uplinkToCompareWith && !uplinkNames.includes(object.uplinkToCompareWith)) uplinkNames.push(object.uplinkToCompareWith);
+  const uplinkObjectOptions = [["", "Select an uplink object"], ...uplinkNames.map((candidateName) => [candidateName, candidateName])];
   const core = [
     `<div class="field-row">${inputField("LoRaWAN payload name", "lorawanPayloadName", object.lorawanPayloadName || "")}</div>`,
     `<div class="field-row">${inputField("BACnet object name", "_name", name)}</div>`,
@@ -288,11 +295,11 @@ function renderObject(name, object) {
   ];
   const downlinkFields = downlink ? `
     <div class="field-grid downlink-fields">
-      <div class="field-pair">${inputField("Downlink FPort", "downlinkPort", object.downlinkPort, { type: "number", min: 0, max: 255, step: 1 })}${selectField("Priority", "downlinkPortPriority", object.downlinkPortPriority || "low", [["low", "Low"], ["high", "High"]])}</div>
-      <div class="field-row">${selectField("Downlink strategy", "downlinkStrategy", object.downlinkStrategy, [["compareToUplinkObject", "Compare with uplink object"], ["compareToUplinkObjectWithinRange", "Compare within range"], ["onChangeOfThisValue", "On BMS value change"], ["onChangeOfThisValueWithinRange", "On BMS value change within range"]])}</div>
-      ${object.downlinkStrategy?.startsWith("compareToUplinkObject") ? `<div class="field-row">${inputField("Uplink BACnet object name", "uplinkToCompareWith", object.uplinkToCompareWith || "")}</div>` : ""}
+      <div class="field-row">${inputField("Downlink FPort", "downlinkPort", object.downlinkPort, { type: "number", min: 0, max: 255, step: 1 })}</div>
+      <div class="${object.downlinkStrategy?.startsWith("compareToUplinkObject") ? "field-pair" : "field-row"}">${selectField("Downlink strategy", "downlinkStrategy", object.downlinkStrategy, [["compareToUplinkObject", "Compare with the following BACnet uplink object"], ["compareToUplinkObjectWithinRange", "Compare with the following BACnet uplink object within range"], ["onChangeOfThisValue", "On change on BMS"], ["onChangeOfThisValueWithinRange", "On change on BMS within range"]])}${object.downlinkStrategy?.startsWith("compareToUplinkObject") ? selectField("Uplink BACnet object name", "uplinkToCompareWith", object.uplinkToCompareWith || "", uplinkObjectOptions) : ""}</div>
       ${object.downlinkStrategy?.endsWith("WithinRange") ? `<div class="field-row">${inputField("Range minimum", "range.0", range[0], { type: "number", step: "any" })}</div><div class="field-row">${inputField("Range maximum", "range.1", range[1], { type: "number", step: "any" })}</div>` : ""}
-      <div class="field-row">${object.objectType === "binaryValue" ? selectField("Default value", "value", object.value ?? 0, [["0", "0 / inactive"], ["1", "1 / active"]]) : inputField("Default value", "value", object.value ?? 0, { type: "number", step: "any" })}</div>
+      <div class="field-row">${selectField("Priority", "downlinkPortPriority", object.downlinkPortPriority || "low", [["low", "Low"], ["high", "High"]])}</div>
+      <div class="field-row">${object.objectType === "binaryValue" ? selectField("Default value when the object is created", "value", object.value ?? 0, [["0", "0 / inactive"], ["1", "1 / active"]]) : inputField("Default value when the object is created", "value", object.value ?? 0, { type: "number", step: "any" })}</div>
     </div>` : "";
 
   return `<article class="object-card${objectExpanded ? " is-expanded" : ""}" data-object-card="${escapeHtml(name)}">

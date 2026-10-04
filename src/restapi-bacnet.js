@@ -66,10 +66,10 @@ function buildCreateRequest(device, timeout) {
 
 // Downlink objects are written with their last known value, if any.
 function buildWriteValuesRequest(device, previousValues, timeout) {
-  const references = Object.values(device.bacnet.objects).map((object) => {
+  const references = Object.entries(device.bacnet.objects).map(([key, object]) => {
     let value = object.value;
     if (object.dataDirection === "downlink") {
-      const previous = previousValues?.[device.identity.deviceName]?.bacnet?.objects?.[object.objectName]?.value;
+      const previous = previousValues?.[device.identity.deviceName]?.bacnet?.objects?.[key]?.value;
       value = previous ?? value;
     }
     return { type: object.objectType, instance: object.instanceNum, property: "presentValue", value };
@@ -185,7 +185,10 @@ async function processRestApiBacnet(device, { httpClient = defaultHttpClient, pr
     logDeviceObject(log, device, "downlink");
   }
 
-  log("info", `${device.identity.deviceName} (RestAPI): TX time = ${Date.now() - device.transmitTime}ms`, undefined, "txTime");
+  // With downlink objects, TX time is logged once the downlink has been prepared.
+  if (!objects.some((object) => object.dataDirection === "downlink")) {
+    log("info", `${device.identity.deviceName} (RestAPI): TX time = ${Date.now() - device.transmitTime}ms`, undefined, "txTime");
+  }
   return { handled: true, ok: true };
 }
 
