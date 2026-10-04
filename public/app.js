@@ -353,7 +353,12 @@ function inputValue(input) {
 }
 
 function renameDevice(oldName, newName) {
-  const safeName = newName.trim();
+  const safeName = newName;
+  if (/\s/.test(safeName)) {
+    showNotice("Device type names cannot contain spaces.", "error");
+    render();
+    return;
+  }
   if (!safeName || (safeName !== oldName && Object.hasOwn(state.config.deviceList, safeName))) {
     showNotice("Device type names must be unique and cannot be empty.", "error");
     render();
@@ -396,7 +401,12 @@ function renameConnection(oldName, newName) {
 }
 
 function renameObject(device, oldName, newName) {
-  const safeName = newName.trim();
+  const safeName = newName;
+  if (/\s/.test(safeName)) {
+    showNotice("Object names cannot contain spaces.", "error");
+    render();
+    return;
+  }
   if (!safeName || (safeName !== oldName && Object.hasOwn(device.bacnet.objects, safeName))) {
     showNotice("Object names must be unique and cannot be empty.", "error");
     render();
@@ -700,6 +710,11 @@ document.addEventListener("change", (event) => {
     const objectName = card?.dataset.objectCard;
     const target = objectName ? device.bacnet.objects[objectName] : device;
     const value = inputValue(input);
+    if (input.dataset.path === "lorawanPayloadName" && /\s/.test(value)) {
+      showNotice("LoRaWAN payload names cannot contain spaces.", "error");
+      render();
+      return;
+    }
     setPath(target, input.dataset.path, input.type === "checkbox" ? input.checked : value);
     if (input.dataset.path === "dataDirection") {
       applyConnection(device, state.config.connections[state.config.deviceConnections[state.selectedDevice]], state.config.deviceConnections[state.selectedDevice]);

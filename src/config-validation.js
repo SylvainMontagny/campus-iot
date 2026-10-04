@@ -42,6 +42,7 @@ function validateConfig(config) {
 
   for (const [deviceName, device] of devices) {
     const devicePath = `deviceList.${deviceName}`;
+    if (/\s/.test(deviceName)) errors.push(issue("Device type names cannot contain spaces", devicePath));
     const bacnet = device?.bacnet;
     const objects = bacnet?.objects;
 
@@ -79,6 +80,8 @@ function validateConfig(config) {
       }
 
       if (!OBJECT_TYPES.has(object.objectType)) errors.push(issue("Choose a supported BACnet object type", `${objectPath}.objectType`));
+      if (/\s/.test(objectName)) errors.push(issue("Object names cannot contain spaces", objectPath));
+      if (/\s/.test(String(object.lorawanPayloadName ?? ""))) errors.push(issue("LoRaWAN payload names cannot contain spaces", `${objectPath}.lorawanPayloadName`));
       if (!DIRECTIONS.has(object.dataDirection)) errors.push(issue("Choose uplink or downlink", `${objectPath}.dataDirection`));
       if (!ASSIGNMENT_MODES.has(object.assignementMode)) errors.push(issue("Choose auto or manual instance assignment", `${objectPath}.assignementMode`));
       if (!Number.isInteger(object.instanceNum) || object.instanceNum < 0) errors.push(issue("Instance number must be a non-negative whole number", `${objectPath}.instanceNum`));
