@@ -790,10 +790,11 @@ document.addEventListener("click", async (event) => {
     const device = state.config.deviceList[state.selectedDevice];
     switch (actionButton.dataset.action) {
       case "add-device": {
-        const base = "device";
-        let index = 1;
-        while (Object.hasOwn(state.config.deviceList, `${base}-${index}`)) index += 1;
-        const name = `${base}-${index}`;
+        const base = "loraDevice";
+        let index = 0;
+        const letters = (n) => (n >= 26 ? letters(Math.floor(n / 26) - 1) : "") + String.fromCharCode(65 + (n % 26));
+        while (Object.hasOwn(state.config.deviceList, `${base}${letters(index)}`)) index += 1;
+        const name = `${base}${letters(index)}`;
         const connectionName = state.selectedConnection || Object.keys(state.config.connections)[0] || "";
         state.config.deviceList[name] = makeDevice(name, connectionName);
         state.expandedDevices[name] = true;

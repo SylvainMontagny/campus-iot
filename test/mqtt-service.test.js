@@ -8,7 +8,7 @@ function makeDeviceList() {
     sensor: {
       identity: { maxDevNum: 4 },
       controller: { protocol: "bacnet" },
-      lorawan: {},
+      lorawan: { networkServer: "tts" },
       mqtt: { topicDownlink: {} },
       bacnet: {
         offsetAV: 100,
@@ -51,6 +51,7 @@ test("maps a TTS uplink to a cloned device output", () => {
 
 test("maps ChirpStack and Actility uplinks and ignores non-uplink notifications", () => {
   const deviceList = makeDeviceList();
+  deviceList.sensor.lorawan.networkServer = "chirpstack";
   const chirpstack = mapIncomingPacket("application/sensor/event/up", {
     fPort: 1,
     deviceInfo: { deviceName: "sensor-1", devEui: "C1" },
@@ -60,6 +61,7 @@ test("maps ChirpStack and Actility uplinks and ignores non-uplink notifications"
   assert.equal(chirpstack.device.mqtt.topicDownlink, "application/sensor/command/down");
   assert.equal(chirpstack.device.bacnet.objects.temperature.value, 22);
 
+  deviceList.sensor.lorawan.networkServer = "actility";
   const actility = mapIncomingPacket("application/sensor/uplink", {
     DevEUI_uplink: {
       CustomerData: { name: "sensor-3" },
@@ -75,6 +77,17 @@ test("maps ChirpStack and Actility uplinks and ignores non-uplink notifications"
   assert.equal(mapIncomingPacket("application/sensor/uplink", {
     DevEUI_uplink: {}, DevEUI_downlink_Rejected: {}
   }, deviceList).error, "Actility : Downlink Message Rejected");
+});
+
+test("rejects a payload from a network server other than the configured one", () => {
+  const result = mapIncomingPacket("application/sensor/event/up", {
+    fPort: 1,
+    deviceInfo: { deviceName: "sensor-1", devEui: "C1" },
+    object: { decoded: { temperature: 22 } }
+  }, makeDeviceList());
+
+  assert.equal(result.device, undefined);
+  assert.equal(result.error, "Error: Network server mismatch (sensor-1): payload comes from 'chirpstack' but device type 'sensor' is configured for 'tts'");
 });
 
 test("preserves the legacy error messages for device and payload failures", () => {

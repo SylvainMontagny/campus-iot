@@ -100,6 +100,13 @@ function mapIncomingPacket(topic, rawPayload, deviceList) {
       details: { errorType: "deviceName", value: deviceName }
     };
   }
+  const configuredNetworkServer = sourceDevice.lorawan?.networkServer;
+  if (configuredNetworkServer !== networkServer) {
+    return {
+      error: `Error: Network server mismatch (${deviceName}): payload comes from '${networkServer}' but device type '${deviceType}' is configured for '${configuredNetworkServer}'`,
+      details: { errorType: "networkServer", value: networkServer }
+    };
+  }
 
   const device = JSON.parse(JSON.stringify(sourceDevice));
   device.identity.deviceName = deviceName;
