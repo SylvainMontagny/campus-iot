@@ -116,7 +116,8 @@ test("subscribes on connect and logs mapped output and legacy errors", async () 
   deviceList.sensor.controller.debug = ["deviceMqtt"];
   const service = createMqttService({
     getDeviceList: async () => deviceList,
-    clientFactory: () => fakeClient
+    clientFactory: () => fakeClient,
+    bacnetHandler: async () => ({ ok: false })
   });
 
   assert.equal(service.connect({ server: "broker.local", port: "1883", username: "user", password: "pass", topic: "#" }).state, "connecting");

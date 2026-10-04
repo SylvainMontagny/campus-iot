@@ -1,7 +1,8 @@
 // Protocol-independent downlink preparation: decides if a downlink is needed and builds the MQTT message.
 
 function protocolLabel(device) {
-  return device.controller.protocol === "restAPIBacnet" ? "RestAPI" : device.controller.protocol;
+  const labels = { restAPIBacnet: "RestAPI", bacnet: "BACnet" };
+  return labels[device.controller.protocol] ?? device.controller.protocol;
 }
 
 // Range is an offset band [center + min, center + max].

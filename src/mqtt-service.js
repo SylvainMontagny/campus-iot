@@ -1,5 +1,6 @@
 const mqtt = require("mqtt");
 const { processRestApiBacnet } = require("./restapi-bacnet");
+const { processBacnet } = require("./bacnet-native");
 const { prepareDownlink, protocolLabel } = require("./downlink");
 
 const MAX_LOG_ENTRIES = 300;
@@ -142,7 +143,8 @@ function mapIncomingPacket(topic, rawPayload, deviceList) {
   return { device };
 }
 
-function createMqttService({ getDeviceList, onLog = () => {}, clientFactory = mqtt.connect, restApiBacnetHandler = processRestApiBacnet } = {}) {
+function createMqttService({ getDeviceList, onLog = () => {}, clientFactory = mqtt.connect, restApiBacnetHandler = processRestApiBacnet, bacnetHandler = processBacnet } = {}) {
+  const protocolHandlers = { restAPIBacnet: restApiBacnetHandler, bacnet: bacnetHandler };
   const previousValues = {};
   let client = null;
   let state = "disconnected";
@@ -269,8 +271,9 @@ function createMqttService({ getDeviceList, onLog = () => {}, clientFactory = mq
             deviceLog("output", `Device object after MQTT reception:\n${JSON.stringify(result.device, null, 2)}`, result.device, "deviceMqtt");
             const name = result.device.identity.deviceName;
             deviceLog("output", `previousValues of ${name} after MQTT reception:\n${JSON.stringify(previousValues[name] ?? null, null, 2)}`, structuredClone(previousValues[name] ?? null), "previousValuesMqtt");
-            if (result.device.controller?.protocol === "restAPIBacnet") {
-              const outcome = await restApiBacnetHandler(result.device, { previousValues, log: deviceLog });
+            const protocolHandler = protocolHandlers[result.device.controller?.protocol];
+            if (protocolHandler) {
+              const outcome = await protocolHandler(result.device, { previousValues, log: deviceLog });
               if (outcome?.ok) await sendDownlink(result.device, deviceLog);
             }
           }

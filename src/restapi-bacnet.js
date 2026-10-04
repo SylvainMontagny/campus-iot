@@ -192,4 +192,4 @@ async function processRestApiBacnet(device, { httpClient = defaultHttpClient, pr
   return { handled: true, ok: true };
 }
 
-module.exports = { processRestApiBacnet, buildReadWriteRequest, buildCreateRequest, buildWriteValuesRequest };
+module.exports = { processRestApiBacnet, logDeviceObject, buildReadWriteRequest, buildCreateRequest, buildWriteValuesRequest };
