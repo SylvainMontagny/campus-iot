@@ -127,7 +127,7 @@ async function runStream(device, dataDirection, ctx) {
 
   if (response.data.includes("Unknown Object")) {
     const allNames = Object.values(device.bacnet.objects).map((object) => object.objectName).join(", ");
-    log("info", `${name} (RestAPI, ${dataDirection}): Creating BACnet objects: ${allNames}`);
+    log("info", `${name} (RestAPI, ${dataDirection}): Creating BACnet objects: ${allNames}`, undefined, "creation");
     const created = await send(httpClient, buildCreateRequest(device, timeout));
     if (created.status !== 200) {
       log("error", `${name} (RestAPI): Object creation failed: ${describeFailure(created, request.url)}`);
@@ -153,8 +153,13 @@ async function runStream(device, dataDirection, ctx) {
     .filter((object) => object.dataDirection === dataDirection)
     .map((object) => object.objectName)
     .join(", ");
-  log("info", `${name} (RestAPI): ${dataDirection === "uplink" ? "Wrote uplink BACNet objects" : "Read downlink BACNet objects"}: ${names}`);
+  log("info", `${name} (RestAPI): ${dataDirection === "uplink" ? "Wrote uplink BACNet objects" : "Read downlink BACNet objects"}: ${names}`, undefined, dataDirection === "uplink" ? "up" : "down");
   return true;
+}
+
+function logDeviceObject(log, device, dataDirection) {
+  const label = dataDirection === "uplink" ? "uplink" : "downlink";
+  log("output", `Device object after ${label} process:\n${JSON.stringify(device, null, 2)}`, structuredClone(device), dataDirection === "uplink" ? "deviceUplink" : "deviceDownlink");
 }
 
 /**
@@ -173,12 +178,14 @@ async function processRestApiBacnet(device, { httpClient = defaultHttpClient, pr
 
   if (objects.some((object) => object.dataDirection === "uplink")) {
     if (!(await runStream(device, "uplink", ctx))) return { handled: true, ok: false };
+    logDeviceObject(log, device, "uplink");
   }
   if (objects.some((object) => object.dataDirection === "downlink")) {
     if (!(await runStream(device, "downlink", ctx))) return { handled: true, ok: false };
+    logDeviceObject(log, device, "downlink");
   }
 
-  log("info", `${device.identity.deviceName} (RestAPI): TX time = ${Date.now() - device.transmitTime}ms`);
+  log("info", `${device.identity.deviceName} (RestAPI): TX time = ${Date.now() - device.transmitTime}ms`, undefined, "txTime");
   return { handled: true, ok: true };
 }
 

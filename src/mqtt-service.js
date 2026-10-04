@@ -2,6 +2,7 @@ const mqtt = require("mqtt");
 const { processRestApiBacnet } = require("./restapi-bacnet");
 
 const MAX_LOG_ENTRIES = 300;
+const RECONNECT_PERIOD_MS = 20000;
 const NETWORKS = {
   tts: { uplinkSuffix: "/up", downlinkSuffix: "/down" },
   chirpstack: { uplinkSuffix: "/event/up", downlinkSuffix: "/command/down" },
@@ -207,7 +208,7 @@ function createMqttService({ getDeviceList, onLog = () => {}, clientFactory = mq
         protocol: "mqtt",
         username: String(options.username || ""),
         password: String(options.password || ""),
-        reconnectPeriod: 0,
+        reconnectPeriod: RECONNECT_PERIOD_MS,
         connectTimeout: 10000
       });
       client = activeClient;
@@ -233,9 +234,14 @@ function createMqttService({ getDeviceList, onLog = () => {}, clientFactory = mq
           const result = mapIncomingPacket(receivedTopic, payload, deviceList);
           if (result.error) addLog("error", result.error, result.details);
           else if (result.device) {
-            addLog("output", `Device object output:\n${JSON.stringify(result.device, null, 2)}`, result.device);
+            const debug = result.device.controller?.debug || [];
+            // Errors are always shown; "all" enables every event category but not the device object prints.
+            const deviceLog = (level, message, details, category) => {
+              if (level === "error" || debug.includes(category) || (level !== "output" && debug.includes("all"))) addLog(level, message, details);
+            };
+            deviceLog("output", `Device object after MQTT reception:\n${JSON.stringify(result.device, null, 2)}`, result.device, "deviceMqtt");
             if (result.device.controller?.protocol === "restAPIBacnet") {
-              await restApiBacnetHandler(result.device, { previousValues, log: addLog });
+              await restApiBacnetHandler(result.device, { previousValues, log: deviceLog });
             }
           }
         } catch (error) {
@@ -249,9 +255,9 @@ function createMqttService({ getDeviceList, onLog = () => {}, clientFactory = mq
       });
       activeClient.on("close", () => {
         if (client !== activeClient) return;
-        client = null;
-        state = "disconnected";
-        addLog("warning", "MQTT connection closed.");
+        // The mqtt client keeps retrying until disconnect() is called.
+        state = "connecting";
+        addLog("warning", `MQTT connection closed. Reconnecting in ${RECONNECT_PERIOD_MS / 1000}s.`);
       });
     } catch (error) {
       client = null;

@@ -99,6 +99,7 @@ async function readMqttSettings(directory = dataDirectory) {
 async function writeMqttSettings(settings, directory = dataDirectory) {
   const clean = {};
   for (const field of MQTT_FIELDS) clean[field] = String(settings?.[field] ?? "");
+  clean.autoConnect = settings?.autoConnect === true;
   await fs.mkdir(directory, { recursive: true });
   await writeJsonAtomically(path.join(directory, "mqtt-connection.json"), clean);
 }
@@ -254,8 +255,14 @@ app.use((error, _request, response, _next) => {
 });
 
 if (require.main === module) {
-  app.listen(port, () => {
+  app.listen(port, async () => {
     console.log(`LoRaBAC is available at http://localhost:${port}`);
+    try {
+      const settings = await readMqttSettings();
+      if (settings.autoConnect === true) mqttService.connect(settings);
+    } catch (error) {
+      console.error(`MQTT auto-connect failed: ${error.message}`);
+    }
   });
 }
 

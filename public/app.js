@@ -263,7 +263,9 @@ function renderDevice() {
       <div id="device-config-panel" class="device-card-body"${deviceExpanded ? "" : " hidden"}>
       <div class="field-grid">${deviceFields.join("")}</div>
       <div class="subsection-heading debug-heading"><div><span class="eyebrow">DIAGNOSTICS</span><h3>Debug events</h3></div></div>
-      <div class="check-grid">${checkbox("All events", debug.includes("all"), "all")}${checkbox("Uplink", debug.includes("up"), "up")}${checkbox("Downlink", debug.includes("down"), "down")}${checkbox("Creation", debug.includes("creation"), "creation")}${checkbox("Transmit time", debug.includes("txTime"), "txTime")}</div>
+      <div class="check-grid">${checkbox("All events", debug.includes("all"), "all")}${checkbox("Uplink events", debug.includes("up"), "up")}${checkbox("Downlink events", debug.includes("down"), "down")}${checkbox("Creation events", debug.includes("creation"), "creation")}${checkbox("Transmit time", debug.includes("txTime"), "txTime")}</div>
+      <div class="subsection-heading debug-heading"><div><h3>Print device object</h3></div></div>
+      <div class="check-grid">${checkbox("After MQTT reception", debug.includes("deviceMqtt"), "deviceMqtt")}${checkbox("After uplink process", debug.includes("deviceUplink"), "deviceUplink")}${checkbox("After downlink process", debug.includes("deviceDownlink"), "deviceDownlink")}</div>
       ${actilityFields}
       </div>
     </section>
@@ -557,7 +559,8 @@ function readMqttForm() {
     port: $("#mqtt-port").value,
     username: $("#mqtt-username").value,
     password: $("#mqtt-password").value,
-    topic: $("#mqtt-topic").value
+    topic: $("#mqtt-topic").value,
+    autoConnect: $("#mqtt-auto-connect").checked
   };
 }
 
@@ -582,6 +585,7 @@ async function loadMqttSettings() {
     for (const field of ["server", "port", "username", "password", "topic"]) {
       if (settings[field]) $(`#mqtt-${field}`).value = settings[field];
     }
+    $("#mqtt-auto-connect").checked = settings.autoConnect === true;
   } catch {
     // Saved settings are optional.
   }
@@ -662,9 +666,11 @@ document.addEventListener("change", (event) => {
   if (input.matches("#device-editor [data-debug]")) {
     const key = input.dataset.debug;
     const debug = device.controller.debug || [];
-    if (key === "all") device.controller.debug = input.checked ? ["all"] : [];
-    else {
+    if (key === "all") {
       device.controller.debug = debug.filter((item) => item !== "all");
+      if (input.checked) device.controller.debug.push("all");
+    } else {
+      device.controller.debug = debug.slice();
       if (input.checked) device.controller.debug.push(key);
       else device.controller.debug = device.controller.debug.filter((item) => item !== key);
     }

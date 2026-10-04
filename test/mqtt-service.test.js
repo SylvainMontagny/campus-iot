@@ -112,8 +112,10 @@ test("subscribes on connect and logs mapped output and legacy errors", async () 
     callback(null);
   };
   fakeClient.end = () => {};
+  const deviceList = makeDeviceList();
+  deviceList.sensor.controller.debug = ["deviceMqtt"];
   const service = createMqttService({
-    getDeviceList: async () => makeDeviceList(),
+    getDeviceList: async () => deviceList,
     clientFactory: () => fakeClient
   });
 
@@ -132,7 +134,7 @@ test("subscribes on connect and logs mapped output and legacy errors", async () 
   await new Promise((resolve) => setImmediate(resolve));
 
   const messages = service.getLogs().map((entry) => entry.message);
-  assert.ok(messages.some((message) => message.startsWith("Device object output:\n")));
+  assert.ok(messages.some((message) => message.startsWith("Device object after MQTT reception:\n")));
   assert.ok(messages.includes("Error: Device Name (bad-name) does not respect *xxx - num* format"));
   assert.equal(service.disconnect().state, "disconnected");
 });
