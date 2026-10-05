@@ -1,5 +1,5 @@
 services:
-  lorabac:
+  campus-iot:
     build: .
     image: campus-iot
     container_name: campus-IoT

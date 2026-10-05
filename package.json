@@ -1,8 +1,8 @@
 {
-  "name": "lorabac-platform",
+  "name": "campus-iot",
   "version": "1.0.0",
   "private": true,
-  "description": "Web-based LoRaBAC device-list configuration generator",
+  "description": "Web-based platform to control LoRaWAN device and agenda with a BACnet controller.",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",

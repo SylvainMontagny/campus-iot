@@ -195,7 +195,6 @@ function renderGlobal() {
 
 function renderNavigation() {
   const entries = Object.entries(state.config.deviceList);
-  $("#device-count").textContent = entries.length;
   const connections = Object.entries(state.config.connections);
   $("#connection-count").textContent = `${connections.length} named ${connections.length === 1 ? "profile" : "profiles"}`;
   if (!connections.some(([name]) => name === state.selectedConnection)) state.selectedConnection = connections[0]?.[0] ?? null;
@@ -210,7 +209,6 @@ function renderNavigation() {
     </button>`).join("");
   $("#device-navigation").innerHTML = entries.map(([name, device]) => `
     <button class="device-nav-item${state.selectedView === "device" && name === state.selectedDevice ? " is-selected" : ""}" type="button" data-select-device="${escapeHtml(name)}">
-      <span class="device-glyph" aria-hidden="true">${escapeHtml(name.slice(0, 1).toUpperCase())}</span>
       <span class="device-nav-copy"><strong>${escapeHtml(name)}</strong><small>${Object.keys(device.bacnet?.objects || {}).length} BACnet objects</small></span>
       <span class="nav-chevron" aria-hidden="true">›</span>
     </button>`).join("");
@@ -249,7 +247,7 @@ function renderDevice() {
   }
 
   container.innerHTML = `
-    <div class="section-heading device-heading"><div><span class="section-index">02</span><h2>Device type</h2></div></div>
+    <div class="section-heading device-heading"><div><h2>Device type</h2></div></div>
     <section class="device-card${deviceExpanded ? " is-expanded" : ""}">
       <div class="panel-heading-row">
         <button class="panel-toggle" type="button" data-panel-toggle="device" aria-expanded="${deviceExpanded}" aria-controls="device-config-panel">
@@ -332,9 +330,9 @@ function render() {
     ? (state.selectedConnection || "BMS connections")
     : showingMqtt ? "MQTT connection" : showingLog ? "Message log" : "Device configuration";
   $("#page-description").textContent = showingGlobal
-    ? "Reusable settings that can be assigned to device types."
-    : showingMqtt ? "Subscribe to uplink messages and inspect the raw MQTT traffic."
-      : showingLog ? "Incoming packets and the mapped device output."
+    ? "These settings will be assigned to a LoRaWAN device type"
+    : showingMqtt ? "Enter the MQTT client credentials"
+      : showingLog ? ""
         : "Device fleet settings and BACnet object mapping.";
 }
 
@@ -462,6 +460,15 @@ async function saveConfig() {
   }
   const mqttSaved = await saveMqttSettings();
   showNotice(mqttSaved ? "Device list and MQTT connection saved to this server." : "Device list saved, but the MQTT connection could not be saved.", mqttSaved ? undefined : "error");
+}
+
+async function loadVersion() {
+  try {
+    const response = await fetch("/api/health");
+    if (response.ok) $("#app-version").textContent = `Version ${(await response.json()).version}`;
+  } catch {
+    // The version label is optional.
+  }
 }
 
 async function loadConfig() {
@@ -915,6 +922,7 @@ $("#import-file").addEventListener("change", async (event) => {
 
 loadConfig();
 loadMqttSettings();
+loadVersion();
 clearLog("mqtt-log");
 clearLog("mqtt-raw-log");
 refreshMqtt();

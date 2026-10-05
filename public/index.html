@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="theme-color" content="#172420">
-    <title>LoRaBAC | Device configuration</title>
+    <title>Campus IoT</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -12,14 +12,14 @@
   </head>
   <body>
     <header class="topbar">
-      <a class="brand" href="/" aria-label="LoRaBAC home">
-        <span class="brand-mark" aria-hidden="true">LB</span>
-        <span><strong>LoRaBAC</strong><small>Campus IoT Platform</small></span>
+      <a class="brand" href="/" aria-label="Campus IoT Platform home">
+        <span><strong>Campus IoT Platform</strong><small id="app-version"></small></span>
       </a>
       <div class="topbar-right">
         <span id="mqtt-state" class="connection-state"><span class="state-dot state-dot-offline"></span>MQTT offline</span>
         <button id="import-button" class="button button-quiet" type="button">Import JSON</button>
         <button id="export-button" class="button button-quiet" type="button">Export JSON</button>
+        <button id="edit-json-button" class="button button-quiet" type="button">Edit JSON</button>
         <button id="save-button" class="button button-primary" type="button">Save configuration</button>
         <input id="import-file" type="file" accept="application/json,.json" hidden>
       </div>
@@ -27,27 +27,30 @@
 
     <main class="workspace">
       <aside class="rail" aria-label="Configuration navigation">
-        <div class="rail-heading"><span class="eyebrow">WORKSPACE</span><span id="device-count" class="count">0</span></div>
-        <button class="device-nav-item mqtt-nav-item" type="button" data-select-view="mqtt">
-          <span class="device-glyph mqtt-glyph" aria-hidden="true">M</span>
-          <span class="device-nav-copy"><strong>MQTT connection</strong><small id="mqtt-nav-status">Disconnected</small></span>
-          <span id="mqtt-nav-dot" class="nav-status-dot" aria-hidden="true"></span>
-        </button>
-        <button class="device-nav-item global-nav-item is-selected" type="button" data-select-view="global">
-          <span class="device-glyph" aria-hidden="true">G</span>
-          <span class="device-nav-copy"><strong>BMS connections</strong><small id="connection-count">0 named profiles</small></span>
-          <span class="nav-chevron" aria-hidden="true">›</span>
-        </button>
-        <nav id="connection-navigation" class="device-navigation profile-navigation" aria-label="Global connection profiles"></nav>
-        <button class="add-device-button add-profile-button" type="button" data-action="add-connection"><span aria-hidden="true">+</span> Add connection</button>
-        <div class="rail-title">LoRa Device Types</div>
-        <nav id="device-navigation" class="device-navigation" aria-label="Device types"></nav>
-        <button id="add-device-button" class="add-device-button" type="button" data-action="add-device"><span aria-hidden="true">+</span> Add device type</button>
-        <button class="device-nav-item mqtt-nav-item" type="button" data-select-view="log">
-          <span class="device-glyph mqtt-glyph" aria-hidden="true">L</span>
-          <span class="device-nav-copy"><strong>Message log</strong><small>Incoming packets</small></span>
-        </button>
-        <div class="rail-foot"><span class="rail-indicator"></span> Local configuration</div>
+        <div class="rail-group">
+          <button class="device-nav-item mqtt-nav-item" type="button" data-select-view="mqtt">
+            <span class="device-nav-copy"><strong>MQTT connection</strong><small id="mqtt-nav-status">Disconnected</small></span>
+            <span id="mqtt-nav-dot" class="nav-status-dot" aria-hidden="true"></span>
+          </button>
+        </div>
+        <div class="rail-group">
+          <button class="device-nav-item global-nav-item is-selected" type="button" data-select-view="global">
+            <span class="device-nav-copy"><strong>BMS connections</strong><small id="connection-count">0 named profiles</small></span>
+            <span class="nav-chevron" aria-hidden="true">›</span>
+          </button>
+          <nav id="connection-navigation" class="device-navigation profile-navigation" aria-label="Global connection profiles"></nav>
+          <button class="add-device-button add-profile-button" type="button" data-action="add-connection"><span aria-hidden="true">+</span> Add connection</button>
+        </div>
+        <div class="rail-group">
+          <div class="rail-title">LoRa Device Types</div>
+          <nav id="device-navigation" class="device-navigation" aria-label="Device types"></nav>
+          <button id="add-device-button" class="add-device-button" type="button" data-action="add-device"><span aria-hidden="true">+</span> Add device type</button>
+        </div>
+        <div class="rail-group">
+          <button class="device-nav-item mqtt-nav-item" type="button" data-select-view="log">
+            <span class="device-nav-copy"><strong>Message log</strong><small>Incoming packets</small></span>
+          </button>
+        </div>
       </aside>
 
       <section class="content">
@@ -55,17 +58,14 @@
           <div>
             <div class="eyebrow">LORAWAN / BACNET</div>
             <h1 id="page-title">BMS connections</h1>
-            <p id="page-description">Named connection profiles available to device types.</p>
-          </div>
-          <div class="heading-actions">
-            <button id="edit-json-button" class="button button-outline" type="button">Edit JSON</button>
+            <p id="page-description"></p>
           </div>
         </div>
 
         <div id="notice" class="notice" role="status" aria-live="polite" hidden></div>
         <section class="config-section global-section" aria-labelledby="global-title">
           <div class="section-heading">
-            <div><span class="section-index">01</span><h2 id="global-title">BMS connection</h2></div>
+            <div><h2 id="global-title">BMS connection</h2></div>
             <button class="button button-danger-quiet" type="button" data-action="delete-connection">Remove profile</button>
           </div>
           <label class="field profile-name-field"><span>Connection name</span><input id="connection-name" type="text" autocomplete="off"></label>
@@ -76,7 +76,7 @@
 
         <section id="mqtt-section" class="config-section mqtt-section" aria-labelledby="mqtt-title" hidden>
           <div class="section-heading">
-            <div><span class="section-index mqtt-section-index">MQ</span><h2 id="mqtt-title">MQTT broker</h2></div>
+            <div><h2 id="mqtt-title">MQTT broker</h2></div>
             <span id="mqtt-section-state" class="mqtt-section-state">Disconnected</span>
           </div>
           <div class="field-grid mqtt-fields">
@@ -105,22 +105,20 @@
 
         <section id="log-section" class="config-section mqtt-section" aria-labelledby="log-title" hidden>
           <div class="section-heading">
-            <div><span class="section-index mqtt-section-index">LG</span><h2 id="log-title">Incoming packets</h2></div>
+            <div><h2 id="log-title">Incoming packets</h2></div>
           </div>
           <section class="mqtt-log-section" aria-labelledby="mqtt-log-title">
             <div class="mqtt-log-heading"><div><span class="eyebrow">LIVE ACTIVITY</span><h3 id="mqtt-log-title">Message log</h3></div><span class="mqtt-log-tools"><span id="mqtt-log-count" class="mqtt-log-count">0 entries</span><button class="button button-outline" type="button" data-toggle-log="log">Suspend</button><button class="button button-outline" type="button" data-clear-log="mqtt-log">Clear logs</button></span></div>
             <div id="mqtt-log" class="mqtt-log" role="log" aria-live="polite" aria-relevant="additions"></div>
           </section>
         </section>
-
-        <footer class="page-footer"><span>LoRaBAC configuration service</span><span>Configuration is stored locally on this server.</span></footer>
       </section>
     </main>
 
     <dialog id="json-dialog" class="json-dialog">
       <form method="dialog" class="dialog-form">
-        <div class="dialog-heading"><div><span class="eyebrow">RAW CONFIGURATION</span><h2>Edit device list JSON</h2></div><button class="icon-button" value="cancel" aria-label="Close dialog">×</button></div>
-        <p class="dialog-copy">Edit the Node-RED-compatible device list. Changes are checked before they are applied.</p>
+        <div class="dialog-heading"><div><h2>Edit device list configuration file</h2></div><button class="icon-button" value="cancel" aria-label="Close dialog">×</button></div>
+        <p class="dialog-copy">Changes are checked before they are applied</p>
         <textarea id="json-input" class="code-input json-editor" spellcheck="false" aria-label="Device list JSON"></textarea>
         <div id="json-errors" class="inline-error" hidden></div>
         <div class="dialog-actions"><button class="button button-outline" value="cancel">Cancel</button><button id="apply-json-button" class="button button-primary" type="button">Apply JSON</button></div>

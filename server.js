@@ -5,6 +5,7 @@ const { isDeepStrictEqual } = require("node:util");
 const { validateConfig } = require("./src/config-validation");
 const { createDefaultConfig } = require("./src/default-config");
 const { createMqttService } = require("./src/mqtt-service");
+const { version } = require("./package.json");
 
 const app = express();
 const port = Number(process.env.PORT) || 3000;
@@ -170,7 +171,7 @@ function applyConnectionsToDevices(config) {
 }
 
 app.get("/api/health", (_request, response) => {
-  response.json({ status: "ok" });
+  response.json({ status: "ok", version });
 });
 
 app.get("/api/mqtt/status", (_request, response) => {
@@ -264,7 +265,7 @@ app.use((error, _request, response, _next) => {
 
 if (require.main === module) {
   app.listen(port, async () => {
-    console.log(`LoRaBAC is available at http://localhost:${port}`);
+    console.log(`Campus IoT is available at http://localhost:${port}`);
     try {
       const settings = await readMqttSettings();
       if (settings.autoConnect === true) mqttService.connect(settings);
