@@ -27,9 +27,9 @@ coverage/
 # Local application data may contain credentials or private device details
 data/config.json
 data/config.json.tmp
-data/connections.json
-data/connections.json.tmp
-data/mqtt-connection.json
-data/mqtt-connection.json.tmp
+data/bms-connections.json
+data/bms-connections.json.tmp
+data/mqtt-connections.json
+data/mqtt-connections.json.tmp
 data/deviceList.json
 data/deviceList.json.tmp

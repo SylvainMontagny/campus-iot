@@ -5,6 +5,8 @@ const { isDeepStrictEqual } = require("node:util");
 const { validateConfig } = require("./src/config-validation");
 const { createDefaultConfig } = require("./src/default-config");
 const { createMqttService } = require("./src/mqtt-service");
+const { createIcalScheduleService } = require("./src/ical-schedule");
+const { createDefaultRoomsSchedules, validateRoomsSchedules, resolveRooms } = require("./src/rooms-config");
 const { version } = require("./package.json");
 
 const app = express();
@@ -13,6 +15,7 @@ const dataDirectory = path.join(__dirname, "data");
 const mqttService = createMqttService({
   getDeviceList: async () => (await readConfig()).deviceList
 });
+const scheduleService = createIcalScheduleService({ log: (level, message) => mqttService.log(level, message) });
 
 app.use(express.json({ limit: "1mb" }));
 app.use(express.static(path.join(__dirname, "public")));
@@ -27,13 +30,22 @@ async function readConfig(directory = dataDirectory) {
     return createDefaultConfig();
   }
 
+  const savedBmsConnections = await readBmsConnections(directory);
   const config = savedData.deviceList
     ? { ...createDefaultConfig(), ...savedData }
     : { ...createDefaultConfig(), deviceList: savedData.deviceList || savedData };
+  config.connections = {
+    ...savedBmsConnections.connections,
+    ...(config.connections || {})
+  };
+  config.deviceConnections = {
+    ...savedBmsConnections.deviceConnections,
+    ...(config.deviceConnections || {})
+  };
 
   const namedConnections = new Map();
   for (const [deviceName, device] of Object.entries(config.deviceList)) {
-    const profileName = device.controller?.connectionName?.trim();
+    const profileName = (device.controller?.connectionName || config.deviceConnections[deviceName] || "").trim();
     if (!profileName) continue;
     const settings = inferConnectionSettings(device);
     const priorSettings = namedConnections.get(profileName);
@@ -44,7 +56,7 @@ async function readConfig(directory = dataDirectory) {
     config.deviceConnections[deviceName] = profileName;
   }
   if (namedConnections.size) {
-    config.connections = Object.fromEntries(namedConnections);
+    config.connections = { ...config.connections, ...Object.fromEntries(namedConnections) };
     for (const deviceName of Object.keys(config.deviceList)) config.deviceConnections[deviceName] ||= "";
   } else {
     const settingsToName = new Map();
@@ -70,13 +82,38 @@ async function readConfig(directory = dataDirectory) {
   return config;
 }
 
+async function readBmsConnections(directory = dataDirectory) {
+  let savedData;
+  try {
+    savedData = JSON.parse(await fs.readFile(path.join(directory, "bms-connections.json"), "utf8"));
+  } catch (error) {
+    if (error.code !== "ENOENT") throw error;
+    try {
+      savedData = JSON.parse(await fs.readFile(path.join(directory, "connections.json"), "utf8"));
+    } catch (legacyError) {
+      if (legacyError.code === "ENOENT") return { connections: {}, deviceConnections: {} };
+      throw legacyError;
+    }
+  }
+
+  const connections = savedData?.["bms-connections"] || savedData?.connections;
+  if (!connections || typeof connections !== "object" || Array.isArray(connections)) {
+    throw new Error("BMS connections file must contain a 'bms-connections' object");
+  }
+  const deviceConnections = savedData.deviceConnections || {};
+  if (typeof deviceConnections !== "object" || Array.isArray(deviceConnections)) {
+    throw new Error("BMS connections file must contain a deviceConnections object");
+  }
+  return { connections, deviceConnections };
+}
+
 async function writeConfig(config, directory = dataDirectory) {
   const deviceListPath = path.join(directory, "deviceList.json");
   await fs.mkdir(directory, { recursive: true });
   await writeJsonAtomically(deviceListPath, config.deviceList);
-  // Informational snapshot only: readConfig rebuilds connections from deviceList.json.
-  await writeJsonAtomically(path.join(directory, "connections.json"), {
-    connections: config.connections || {},
+  // Assigned profiles are rebuilt from device settings; this file also retains unused profiles.
+  await writeJsonAtomically(path.join(directory, "bms-connections.json"), {
+    "bms-connections": config.connections || {},
     deviceConnections: config.deviceConnections || {}
   });
 }
@@ -87,14 +124,45 @@ async function writeJsonAtomically(filePath, value) {
   await fs.rename(temporaryPath, filePath);
 }
 
+async function readRoomsSchedules(directory = dataDirectory) {
+  try {
+    return JSON.parse(await fs.readFile(path.join(directory, "rooms-schedules.json"), "utf8"));
+  } catch (error) {
+    if (error.code === "ENOENT") return createDefaultRoomsSchedules();
+    throw error;
+  }
+}
+
+async function writeRoomsSchedules(roomsSchedules, directory = dataDirectory) {
+  await fs.mkdir(directory, { recursive: true });
+  await writeJsonAtomically(path.join(directory, "rooms-schedules.json"), {
+    icalToScheduleConf: roomsSchedules.icalToScheduleConf,
+    rooms: roomsSchedules.rooms
+  });
+}
+
+function startRoomsSchedules(roomsSchedules, config) {
+  return scheduleService.start({
+    icalToScheduleConf: roomsSchedules.icalToScheduleConf,
+    rooms: roomsSchedules.rooms,
+    deviceList: config.deviceList,
+    connections: config.connections
+  });
+}
+
 const MQTT_FIELDS = ["server", "port", "username", "password", "topic"];
 
 async function readMqttSettings(directory = dataDirectory) {
   try {
-    return JSON.parse(await fs.readFile(path.join(directory, "mqtt-connection.json"), "utf8"));
+    return JSON.parse(await fs.readFile(path.join(directory, "mqtt-connections.json"), "utf8"));
   } catch (error) {
-    if (error.code === "ENOENT") return {};
-    throw error;
+    if (error.code !== "ENOENT") throw error;
+    try {
+      return JSON.parse(await fs.readFile(path.join(directory, "mqtt-connection.json"), "utf8"));
+    } catch (legacyError) {
+      if (legacyError.code === "ENOENT") return {};
+      throw legacyError;
+    }
   }
 }
 
@@ -103,7 +171,7 @@ async function writeMqttSettings(settings, directory = dataDirectory) {
   for (const field of MQTT_FIELDS) clean[field] = String(settings?.[field] ?? "");
   clean.autoConnect = settings?.autoConnect === true;
   await fs.mkdir(directory, { recursive: true });
-  await writeJsonAtomically(path.join(directory, "mqtt-connection.json"), clean);
+  await writeJsonAtomically(path.join(directory, "mqtt-connections.json"), clean);
 }
 
 function inferConnectionSettings(device) {
@@ -219,21 +287,27 @@ app.post("/api/mqtt/disconnect", (_request, response) => {
 
 app.get("/api/config", async (_request, response, next) => {
   try {
-    response.json(await readConfig());
+    response.json({ ...(await readConfig()), roomsSchedules: await readRoomsSchedules() });
   } catch (error) {
     next(error);
   }
 });
 
 app.post("/api/config/validate", (request, response) => {
-  const errors = validateConfig(applyConnectionsToDevices(request.body));
+  const config = applyConnectionsToDevices(request.body);
+  const errors = validateConfig(config);
+  if (!errors.length && request.query.roomsSchedules === "true" && request.body?.roomsSchedules !== undefined) {
+    errors.push(...validateRoomsSchedules(request.body.roomsSchedules, config));
+  }
   response.status(errors.length ? 400 : 200).json({ valid: errors.length === 0, errors });
 });
 
 app.put("/api/config", async (request, response, next) => {
   try {
     const config = applyConnectionsToDevices(request.body);
+    const roomsSchedules = request.body?.roomsSchedules;
     const errors = validateConfig(config);
+    if (!errors.length && roomsSchedules !== undefined) errors.push(...validateRoomsSchedules(roomsSchedules, config));
     if (errors.length) {
       response.status(400).json({ error: "Configuration is invalid", errors });
       return;
@@ -246,6 +320,12 @@ app.put("/api/config", async (request, response, next) => {
       if (!isDeepStrictEqual(previousDeviceList[deviceType], config.deviceList[deviceType])) {
         mqttService.clearPreviousValues(deviceType);
       }
+    }
+    if (roomsSchedules !== undefined) {
+      await writeRoomsSchedules(roomsSchedules);
+      const rooms = resolveRooms(roomsSchedules);
+      mqttService.log("output", `Rooms & Schedules saved.\nrooms = ${JSON.stringify(rooms, null, 2)}\nicalToScheduleConf = ${JSON.stringify(roomsSchedules.icalToScheduleConf, null, 2)}`);
+      startRoomsSchedules(roomsSchedules, config);
     }
     response.json({ saved: true });
   } catch (error) {
@@ -271,6 +351,11 @@ if (require.main === module) {
       if (settings.autoConnect === true) mqttService.connect(settings);
     } catch (error) {
       console.error(`MQTT auto-connect failed: ${error.message}`);
+    }
+    try {
+      await startRoomsSchedules(await readRoomsSchedules(), await readConfig());
+    } catch (error) {
+      console.error(`Rooms & Schedules start failed: ${error.message}`);
     }
   });
 }

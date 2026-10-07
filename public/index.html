@@ -21,7 +21,7 @@
         <button id="export-button" class="button button-quiet" type="button">Export JSON</button>
         <button id="edit-json-button" class="button button-quiet" type="button">Edit JSON</button>
         <button id="save-button" class="button button-primary" type="button">Save configuration</button>
-        <input id="import-file" type="file" accept="application/json,.json" hidden>
+        <input id="import-file" type="file" accept="application/json,.json" multiple hidden>
       </div>
     </header>
 
@@ -45,6 +45,15 @@
           <div class="rail-title">LoRa Device Types</div>
           <nav id="device-navigation" class="device-navigation" aria-label="Device types"></nav>
           <button id="add-device-button" class="add-device-button" type="button" data-action="add-device"><span aria-hidden="true">+</span> Add device type</button>
+        </div>
+        <div class="rail-group">
+          <div class="rail-title">Rooms &amp; Schedules</div>
+          <button class="device-nav-item global-nav-item" type="button" data-select-view="schedule-global">
+            <span class="device-nav-copy"><strong>Global configuration</strong><small>Updates and default settings</small></span>
+            <span class="nav-chevron" aria-hidden="true">›</span>
+          </button>
+          <nav id="room-navigation" class="device-navigation" aria-label="Rooms"></nav>
+          <button class="add-device-button" type="button" data-action="add-room"><span aria-hidden="true">+</span> Add room</button>
         </div>
         <div class="rail-group">
           <button class="device-nav-item mqtt-nav-item" type="button" data-select-view="log">
@@ -73,6 +82,8 @@
         </section>
 
         <section id="device-editor" class="config-section device-section" aria-live="polite" hidden></section>
+        <section id="schedule-global-editor" class="config-section schedule-section" aria-live="polite" hidden></section>
+        <section id="room-editor" class="config-section device-section" aria-live="polite" hidden></section>
 
         <section id="mqtt-section" class="config-section mqtt-section" aria-labelledby="mqtt-title" hidden>
           <div class="section-heading">

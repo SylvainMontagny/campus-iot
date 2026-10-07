@@ -316,7 +316,7 @@ function createMqttService({ getDeviceList, onLog = () => {}, clientFactory = mq
     }
   }
 
-  return { connect, disconnect, getStatus, getLogs, getRawMessages, publish, clearPreviousValues };
+  return { connect, disconnect, getStatus, getLogs, getRawMessages, publish, clearPreviousValues, log: addLog };
 }
 
 module.exports = { createMqttService, mapIncomingPacket };

@@ -16,6 +16,7 @@
     "@bacnet-js/client": "^3.3.2",
     "axios": "^1.7.0",
     "express": "^5.1.0",
-    "mqtt": "^5.16.0"
+    "mqtt": "^5.16.0",
+    "node-ical": "^0.20.1"
   }
 }

@@ -85,6 +85,8 @@ button { cursor: pointer; }
 .global-section { padding: 19px 21px 21px; border-top: 3px solid var(--forest); }
 .global-section[hidden], #device-editor[hidden], #mqtt-section[hidden], #log-section[hidden] { display: none; }
 .mqtt-section { padding: 19px 21px 21px; border-top: 3px solid #398c63; }
+.schedule-section { padding: 19px 21px 21px; border-top: 3px solid var(--forest); }
+.schedule-section .advanced-card { margin-top: 18px; }
 .mqtt-section-index { color: #2f7552; background: #e3f0e5; font-size: 9px; }
 .mqtt-section-state { color: var(--muted); font-family: var(--mono); font-size: 11px; }
 .mqtt-fields { max-width: 760px; }
@@ -239,6 +241,7 @@ button { cursor: pointer; }
   .section-caption { display: none; }
   .global-section { padding: 15px; }
   .mqtt-section { padding: 15px; }
+  .schedule-section { padding: 15px; }
   .mqtt-log-entry { grid-template-columns: 1fr; gap: 5px; }
   .mqtt-log-meta { display: flex; justify-content: space-between; }
   .device-card-body { padding: 5px 15px 15px; }

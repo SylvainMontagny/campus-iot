@@ -2,9 +2,12 @@
   config: null,
   selectedDevice: null,
   selectedConnection: null,
+  selectedRoom: null,
   selectedView: "global",
   expandedDevices: {},
   expandedObjects: {},
+  expandedAdvanced: {},
+  expandedRoomDevices: {},
   noticeTimer: null,
   mqttLogId: 0,
   mqttRawId: 0,
@@ -16,11 +19,31 @@ const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, (character
   "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
 }[character]));
 
+function defaultRoomsSchedules() {
+  return {
+    icalToScheduleConf: {
+      timeBetweenScheduleUpdate: 180,
+      timeBetweenScheduleAVUpdate: 30,
+      scheduleInstanceRange: [0, 50],
+      scheduleAVInstanceOffset: 10000,
+      logs: { eventsAddedInSchedules: true, eventTimeCreation: true, scheduleAVUpdate: true },
+      defaults: {
+        groupEvents: true, timeZone: "Europe/Paris", eventsToDiscard: ["SOBRIETE ENERGETIQUE"],
+        minimumSlotDuration: 0, valueOccupied: 19, valueUnOccupied: 15,
+        timeOffsetBeforeStart: 60, timeOffsetBeforeEnd: 60, nbrDaysPreview: 10, addSuffixToAdeURL: false,
+        weekly: {}
+      }
+    },
+    rooms: []
+  };
+}
+
 function defaultConfig() {
   return {
     deviceList: {},
     connections: {},
-    deviceConnections: {}
+    deviceConnections: {},
+    roomsSchedules: defaultRoomsSchedules()
   };
 }
 
@@ -202,6 +225,14 @@ function renderNavigation() {
   $("[data-select-view='global']").classList.toggle("is-selected", state.selectedView === "global");
   $("[data-select-view='mqtt']").classList.toggle("is-selected", state.selectedView === "mqtt");
   $("[data-select-view='log']").classList.toggle("is-selected", state.selectedView === "log");
+  $("[data-select-view='schedule-global']").classList.toggle("is-selected", state.selectedView === "schedule-global");
+  const rooms = state.config.roomsSchedules.rooms;
+  state.selectedRoom = rooms.length ? Math.min(Math.max(state.selectedRoom ?? 0, 0), rooms.length - 1) : null;
+  $("#room-navigation").innerHTML = rooms.map((room, index) => `
+    <button class="device-nav-item${state.selectedView === "room" && index === state.selectedRoom ? " is-selected" : ""}" type="button" data-select-room="${index}">
+      <span class="device-nav-copy"><strong>${escapeHtml(room.scheduleName)}</strong><small>${Object.keys(room.devices || {}).length} device types</small></span>
+      <span class="nav-chevron" aria-hidden="true">›</span>
+    </button>`).join("");
   $("#connection-navigation").innerHTML = connections.map(([name]) => `
     <button class="device-nav-item connection-nav-item${state.selectedView === "global" && name === state.selectedConnection ? " is-selected" : ""}" type="button" data-select-connection="${escapeHtml(name)}">
       <span class="device-glyph connection-glyph" aria-hidden="true">↔</span>
@@ -315,25 +346,251 @@ function renderObject(name, object) {
   </article>`;
 }
 
+const TIME_ZONES = ["Europe/Paris", "UTC", "Europe/London", "Europe/Brussels", "Europe/Berlin", "Europe/Madrid", "Europe/Rome", "Europe/Zurich", "America/New_York", "America/Chicago", "America/Los_Angeles", "Asia/Tokyo", "Australia/Sydney"];
+
+// Settings shared by the global defaults and every room (a room only stores the ones it overrides).
+const SCHEDULE_SETTINGS = [
+  { key: "groupEvents", kind: "boolean", label: "Do you want to merge all daily event as one?" },
+  { key: "timeZone", kind: "timezone", label: "Time zone", globalLabel: "Default time zone" },
+  { key: "eventsToDiscard", kind: "list", label: "Names of the events to discard in the agenda", globalLabel: "Default names of the events to discard in the agenda" },
+  { key: "minimumSlotDuration", kind: "number", min: 0, label: "Minimum duration (mins) for an event in the agenda" },
+  { key: "valueOccupied", kind: "number", label: "Value when the room is occupied", globalLabel: "Default value when the room is occupied" },
+  { key: "valueUnOccupied", kind: "number", label: "Value when the room is unoccupied", globalLabel: "Default value when the room is unoccupied" },
+  { key: "timeOffsetBeforeStart", kind: "number", min: 0, groupedOnly: true, label: "Time offset (mins) before the start of the merged event" },
+  { key: "timeOffsetBeforeEnd", kind: "number", min: 0, groupedOnly: true, label: "Time offset (mins) before the end of the merged event" },
+  { key: "nbrDaysPreview", kind: "number", min: 1, step: 1, label: "Number of days to anticipate", globalLabel: "Default number of days to anticipate" },
+  { key: "addSuffixToAdeURL", kind: "boolean", label: "Add &lastDate=<today + days to anticipate> to the ADE URL" },
+  { key: "weekly", kind: "json", label: "Weekly schedule", globalLabel: "Default weekly schedule" }
+];
+
+function scheduleSettingField(spec, value, attribute, isGlobal) {
+  const label = isGlobal ? spec.globalLabel || spec.label : spec.label;
+  const attrs = `${attribute}="${spec.key}"`;
+  let control;
+  if (spec.kind === "boolean") {
+    control = `<select ${attrs}>${["true", "false"].map((option) => `<option value="${option}"${String(Boolean(value)) === option ? " selected" : ""}>${option}</option>`).join("")}</select>`;
+  } else if (spec.kind === "timezone") {
+    const zones = TIME_ZONES.includes(value) ? TIME_ZONES : [...TIME_ZONES, value];
+    control = `<select ${attrs}>${zones.map((zone) => `<option value="${escapeHtml(zone)}"${zone === value ? " selected" : ""}>${escapeHtml(zone)}</option>`).join("")}</select>`;
+  } else if (spec.kind === "json") {
+    control = `<textarea class="code-input" ${attrs} rows="14" spellcheck="false">${escapeHtml(JSON.stringify(value ?? {}, null, 2))}</textarea>`;
+  } else if (spec.kind === "list") {
+    control = `<input ${attrs} type="text" value="${escapeHtml((value || []).join(", "))}" placeholder="Comma separated values" autocomplete="off">`;
+  } else {
+    control = `<input ${attrs} type="number" step="${spec.step ?? "any"}"${spec.min !== undefined ? ` min="${spec.min}"` : ""} value="${escapeHtml(value)}" autocomplete="off">`;
+  }
+  return `<label class="field"><span>${escapeHtml(label)}</span>${control}</label>`;
+}
+
+const OCCUPANCY_ROW = ["valueOccupied", "valueUnOccupied"];
+const OFFSET_ROW = ["timeOffsetBeforeStart", "timeOffsetBeforeEnd"];
+const SCHEDULE_ROWS = [
+  ["groupEvents"], ["timeZone"], ["eventsToDiscard"], ["minimumSlotDuration"],
+  OCCUPANCY_ROW,
+  OFFSET_ROW, ["nbrDaysPreview"], ["addSuffixToAdeURL"], ["weekly"]
+];
+
+const SCHEDULE_LOGS = [
+  ["eventsAddedInSchedules", "Event added in schedules"],
+  ["eventTimeCreation", "Event time creation"],
+  ["scheduleAVUpdate", "Schedule AV update"]
+];
+
+// Settings that share a row are displayed side by side; the offsets only apply to merged events.
+function scheduleSettingRows(rows, valueOf, attribute, isGlobal, grouped) {
+  return rows.map((keys) => {
+    const specs = keys.map((key) => SCHEDULE_SETTINGS.find((spec) => spec.key === key)).filter((spec) => !spec.groupedOnly || grouped);
+    if (!specs.length) return "";
+    const fields = specs.map((spec) => scheduleSettingField(spec, valueOf(spec.key), attribute, isGlobal)).join("");
+    return `<div class="${specs.length > 1 ? "field-pair" : "field-row"}">${fields}</div>`;
+  }).join("");
+}
+
+function advancedPanel(key, bodyHtml) {
+  const expanded = Boolean(state.expandedAdvanced[key]);
+  return `<section class="device-card advanced-card${expanded ? " is-expanded" : ""}">
+    <div class="panel-heading-row">
+      <button class="panel-toggle" type="button" data-panel-toggle="advanced" data-advanced-key="${escapeHtml(key)}" aria-expanded="${expanded}">
+        <span class="panel-chevron" aria-hidden="true">${expanded ? "−" : "+"}</span>
+        <span class="panel-heading-copy"><strong>Advanced settings</strong></span>
+      </button>
+    </div>
+    <div class="device-card-body"${expanded ? "" : " hidden"}>${bodyHtml}</div>
+  </section>`;
+}
+
+// Returns false (after a notice) when the JSON of the weekly schedule is invalid.
+function applyScheduleSetting(target, input, key) {
+  const spec = SCHEDULE_SETTINGS.find((candidate) => candidate.key === key);
+  try {
+    if (spec.kind === "boolean") target[key] = input.value === "true";
+    else if (spec.kind === "list") target[key] = input.value.split(",").map((item) => item.trim()).filter(Boolean);
+    else if (spec.kind === "json") target[key] = JSON.parse(input.value);
+    else if (spec.kind === "number") target[key] = inputValue(input);
+    else target[key] = input.value;
+  } catch {
+    showNotice(`${spec.globalLabel || spec.label}: invalid JSON.`, "error");
+  }
+  render();
+}
+
+function downlinkObjectNames(deviceType) {
+  return Object.entries(state.config.deviceList[deviceType]?.bacnet?.objects || {})
+    .filter(([, object]) => object.dataDirection === "downlink")
+    .map(([name]) => name);
+}
+
+function renderScheduleGlobal() {
+  const conf = state.config.roomsSchedules.icalToScheduleConf;
+  const [first, last] = conf.scheduleInstanceRange;
+  const confField = (label, path, value, options = {}) => inputField(label, path, value, { type: "number", step: 1, ...options }).replace("data-path=", "data-schedule-conf=");
+  const grouped = conf.defaults.groupEvents === true;
+  const valueOf = (key) => conf.defaults[key];
+  const advanced = `
+    <div class="field-grid">
+      <div class="field-row">${confField("Time (sec) between 2 scheduleAV updates", "timeBetweenScheduleAVUpdate", conf.timeBetweenScheduleAVUpdate, { min: 1 })}</div>
+      <div class="field-row">${confField("First instance number for scheduleAV", "scheduleAVInstanceOffset", conf.scheduleAVInstanceOffset, { min: 0 })}</div>
+    </div>
+    <div class="subsection-heading debug-heading"><div><h3>Schedules instance number range when creating new 'schedule BACnet object'</h3></div></div>
+    <div class="field-grid"><div class="field-pair">${confField("First schedule instance number", "scheduleInstanceRange.0", first, { min: 0 })}${confField("Last schedule instance number", "scheduleInstanceRange.1", last, { min: 0 })}</div></div>
+    <div class="subsection-heading debug-heading"><div><h3>Default room settings</h3></div></div>
+    <div class="field-grid">${scheduleSettingRows(SCHEDULE_ROWS.filter((row) => row !== OCCUPANCY_ROW && row !== OFFSET_ROW), valueOf, "data-schedule-default", true, grouped)}</div>`;
+  $("#schedule-global-editor").innerHTML = `
+    <div class="section-heading"><div><h2>Basic settings</h2></div></div>
+    <div class="field-grid">
+      ${scheduleSettingRows([OCCUPANCY_ROW, OFFSET_ROW], valueOf, "data-schedule-default", true, grouped)}
+      <div class="field-row">${confField("Time (sec) between 2 schedule updates", "timeBetweenScheduleUpdate", conf.timeBetweenScheduleUpdate, { min: 1 })}</div>
+    </div>
+    <div class="subsection-heading debug-heading"><div><h3>Message log</h3></div></div>
+    <div class="check-grid">${SCHEDULE_LOGS.map(([key, label]) => `<label class="check-field"><input type="checkbox" data-schedule-log="${key}"${conf.logs[key] !== false ? " checked" : ""}><span>${escapeHtml(label)}</span></label>`).join("")}</div>
+    ${advancedPanel("global", advanced)}`;
+}
+
+function renderRoom() {
+  const container = $("#room-editor");
+  const { icalToScheduleConf: { defaults }, rooms } = state.config.roomsSchedules;
+  const room = rooms[state.selectedRoom];
+  if (!room) {
+    container.innerHTML = `<div class="empty-state"><div class="empty-symbol" aria-hidden="true">+</div><h2>No rooms yet</h2><p>Add a room to synchronise its agenda with a BACnet schedule.</p><button class="button button-primary" type="button" data-action="add-room">Add room</button></div>`;
+    return;
+  }
+
+  const roomField = (html) => html.replace("data-path=", "data-room-field=");
+  const connectionNames = Object.keys(state.config.connections);
+  if (room.connectionName && !connectionNames.includes(room.connectionName)) connectionNames.push(room.connectionName);
+  const connectionOptions = [["", "Select a BMS connection"], ...connectionNames.map((name) => [name, name])];
+  const grouped = (room.groupEvents ?? defaults.groupEvents) === true;
+  const deviceTypes = Object.keys(state.config.deviceList);
+
+  const deviceRows = Object.entries(room.devices).map(([type, device]) => {
+    const typeNames = deviceTypes.includes(type) ? deviceTypes : [type, ...deviceTypes];
+    const downlinkNames = downlinkObjectNames(type);
+    if (device.AVToBindName && !downlinkNames.includes(device.AVToBindName)) downlinkNames.push(device.AVToBindName);
+    const deviceField = (html) => html.replace("data-path=", "data-room-device-field=");
+    const deviceExpanded = Boolean(state.expandedRoomDevices[`${state.selectedRoom}::${type}`]);
+    const deviceCount = (device.deviceNums || []).length;
+    return `<article class="object-card${deviceExpanded ? " is-expanded" : ""}" data-room-device="${escapeHtml(type)}">
+      <div class="object-card-heading">
+        <button class="panel-toggle object-panel-toggle" type="button" data-panel-toggle="roomDevice" data-device-type="${escapeHtml(type)}" aria-expanded="${deviceExpanded}">
+          <span class="panel-chevron" aria-hidden="true">${deviceExpanded ? "−" : "+"}</span>
+          <span class="object-title"><span class="object-type-mark mark-down" aria-hidden="true">↓</span><span class="object-title-copy"><strong>${escapeHtml(type)}</strong><small>${escapeHtml(device.AVToBindName || "No object selected")}</small></span></span>
+          <span class="panel-summary-count">${deviceCount} ${deviceCount === 1 ? "device" : "devices"}</span>
+        </button>
+        <button class="button button-danger-quiet button-compact" type="button" data-action="delete-room-device" data-device-type="${escapeHtml(type)}">Remove</button>
+      </div>
+      <div class="object-card-body"${deviceExpanded ? "" : " hidden"}><div class="field-grid">
+        <div class="field-row">${deviceField(selectField("LoRaWAN device type", "type", type, typeNames.map((name) => [name, name])))}</div>
+        <div class="field-row">${deviceField(inputField("Device numbers (comma separated)", "deviceNums", (device.deviceNums || []).join(", "), { placeholder: "2, 5, 10" }))}</div>
+        <div class="field-row">${deviceField(selectField("AVToBindName (downlink object)", "AVToBindName", device.AVToBindName || "", [["", "Select a downlink object"], ...downlinkNames.map((name) => [name, name])]))}</div>
+      </div></div>
+    </article>`;
+  }).join("");
+
+  container.innerHTML = `
+    <div class="section-heading device-heading"><div><h2>Room</h2></div></div>
+    <section class="config-section schedule-section">
+      <div class="section-heading"><div><h2>Basic settings</h2></div><button class="button button-danger-quiet" type="button" data-action="delete-room">Remove room</button></div>
+      <div class="field-grid">
+        <div class="field-row">${roomField(inputField("Room / schedule name", "scheduleName", room.scheduleName))}</div>
+        <div class="field-row">${roomField(selectField("On which BACnet BMS will be the agenda", "connectionName", room.connectionName || "", connectionOptions))}</div>
+        <div class="field-row">${roomField(inputField("iCal URL", "url", room.url, { placeholder: "https://" }))}</div>
+      </div>
+      ${advancedPanel(`room:${state.selectedRoom}`, `<div class="field-grid">${scheduleSettingRows(SCHEDULE_ROWS, (key) => room[key] ?? defaults[key], "data-room-field", false, grouped)}</div>`)}
+    </section>
+    <div class="objects-heading"><div><h2>Devices <span class="object-count">${Object.keys(room.devices).length}</span></h2></div><button class="button button-outline" type="button" data-action="add-room-device">+ Add device</button></div>
+    <div class="object-list">${deviceRows || `<div class="empty-objects">No device yet. Add the LoRaWAN devices controlled by this room schedule.</div>`}</div>`;
+}
+
+function handleRoomField(input) {
+  const { rooms } = state.config.roomsSchedules;
+  const room = rooms[state.selectedRoom];
+  const key = input.dataset.roomField;
+  if (key === "scheduleName") {
+    const name = input.value.trim();
+    if (!name || /\s/.test(name) || rooms.some((other, index) => index !== state.selectedRoom && other.scheduleName === name)) {
+      showNotice("Room names must be unique and cannot be empty or contain spaces.", "error");
+      render();
+      return;
+    }
+    room.scheduleName = name;
+  } else if (key === "connectionName" || key === "url") {
+    room[key] = input.value.trim();
+  } else {
+    applyScheduleSetting(room, input, key);
+    return;
+  }
+  render();
+}
+
+function handleRoomDeviceField(input) {
+  const room = state.config.roomsSchedules.rooms[state.selectedRoom];
+  const type = input.closest("[data-room-device]").dataset.roomDevice;
+  const field = input.dataset.roomDeviceField;
+  if (field === "type") {
+    const newType = input.value;
+    if (newType !== type) {
+      if (Object.hasOwn(room.devices, newType)) {
+        showNotice(`Device type '${newType}' is already in this room.`, "error");
+      } else {
+        room.devices = Object.fromEntries(Object.entries(room.devices).map(([key, value]) => (key === type
+          ? [newType, { deviceNums: value.deviceNums, AVToBindName: downlinkObjectNames(newType)[0] || "" }]
+          : [key, value])));
+        state.expandedRoomDevices[`${state.selectedRoom}::${newType}`] = state.expandedRoomDevices[`${state.selectedRoom}::${type}`];
+        delete state.expandedRoomDevices[`${state.selectedRoom}::${type}`];
+      }
+    }
+  } else if (field === "deviceNums") {
+    const numbers = input.value.split(",").map((item) => item.trim()).filter(Boolean).map(Number);
+    if (numbers.some((number) => !Number.isInteger(number) || number < 1)) showNotice("Device numbers must be whole numbers greater than 0, separated by commas.", "error");
+    else room.devices[type].deviceNums = numbers;
+  } else {
+    room.devices[type].AVToBindName = input.value;
+  }
+  render();
+}
+
 function render() {
   renderNavigation();
   renderGlobal();
   renderDevice();
-  const showingGlobal = state.selectedView === "global";
-  const showingMqtt = state.selectedView === "mqtt";
-  const showingLog = state.selectedView === "log";
-  $(".global-section").hidden = !showingGlobal;
-  $("#device-editor").hidden = showingGlobal || showingMqtt || showingLog;
-  $("#mqtt-section").hidden = !showingMqtt;
-  $("#log-section").hidden = !showingLog;
-  $("#page-title").textContent = showingGlobal
-    ? (state.selectedConnection || "BMS connections")
-    : showingMqtt ? "MQTT connection" : showingLog ? "Message log" : "Device configuration";
-  $("#page-description").textContent = showingGlobal
-    ? "These settings will be assigned to a LoRaWAN device type"
-    : showingMqtt ? "Enter the MQTT client credentials"
-      : showingLog ? ""
-        : "Device fleet settings and BACnet object mapping.";
+  renderScheduleGlobal();
+  renderRoom();
+  const view = state.selectedView;
+  $(".global-section").hidden = view !== "global";
+  $("#device-editor").hidden = view !== "device";
+  $("#schedule-global-editor").hidden = view !== "schedule-global";
+  $("#room-editor").hidden = view !== "room";
+  $("#mqtt-section").hidden = view !== "mqtt";
+  $("#log-section").hidden = view !== "log";
+  const pages = {
+    global: [state.selectedConnection || "BMS connections", "These settings will be assigned to a LoRaWAN device type"],
+    mqtt: ["MQTT connection", "Enter the MQTT client credentials"],
+    log: ["Message log", ""],
+    "schedule-global": ["Rooms & Schedules", "Global configuration"],
+    room: [state.config.roomsSchedules.rooms[state.selectedRoom]?.scheduleName || "Rooms & Schedules", "Agenda, BMS connection and devices of this room"],
+    device: ["Device configuration", "Device fleet settings and BACnet object mapping."]
+  };
+  [$("#page-title").textContent, $("#page-description").textContent] = pages[view];
 }
 
 function showNotice(message, kind = "success") {
@@ -437,13 +694,24 @@ function setConnectionValue(path, value) {
 
 function downloadConfig() {
   syncAssignedConnections();
-  const blob = new Blob([`${JSON.stringify(state.config.deviceList, null, 2)}\n`], { type: "application/json" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = "deviceList.json";
-  link.click();
-  URL.revokeObjectURL(url);
+  const files = [
+    ["deviceList.json", state.config.deviceList],
+    ["mqtt-connections.json", readMqttForm()],
+    ["rooms-schedules.json", state.config.roomsSchedules],
+    ["bms-connections.json", {
+      "bms-connections": state.config.connections,
+      deviceConnections: state.config.deviceConnections
+    }]
+  ];
+  for (const [filename, value] of files) {
+    const blob = new Blob([`${JSON.stringify(value, null, 2)}\n`], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
 }
 
 async function saveConfig() {
@@ -479,6 +747,9 @@ async function loadConfig() {
     state.config.connections ||= {};
     state.config.deviceConnections ||= {};
     state.config.deviceList ||= {};
+    state.config.roomsSchedules ||= defaultRoomsSchedules();
+    const scheduleConf = state.config.roomsSchedules.icalToScheduleConf;
+    scheduleConf.logs = { ...defaultRoomsSchedules().icalToScheduleConf.logs, ...scheduleConf.logs };
     for (const deviceName of Object.keys(state.config.deviceList)) state.config.deviceConnections[deviceName] ||= "";
   } catch (error) {
     state.config = defaultConfig();
@@ -677,6 +948,27 @@ document.addEventListener("change", (event) => {
     render();
     return;
   }
+  if (input.matches("#schedule-global-editor [data-schedule-conf]")) {
+    setPath(state.config.roomsSchedules.icalToScheduleConf, input.dataset.scheduleConf, inputValue(input));
+    render();
+    return;
+  }
+  if (input.matches("#schedule-global-editor [data-schedule-log]")) {
+    state.config.roomsSchedules.icalToScheduleConf.logs[input.dataset.scheduleLog] = input.checked;
+    return;
+  }
+  if (input.matches("#schedule-global-editor [data-schedule-default]")) {
+    applyScheduleSetting(state.config.roomsSchedules.icalToScheduleConf.defaults, input, input.dataset.scheduleDefault);
+    return;
+  }
+  if (input.matches("#room-editor [data-room-field]")) {
+    handleRoomField(input);
+    return;
+  }
+  if (input.matches("#room-editor [data-room-device-field]")) {
+    handleRoomDeviceField(input);
+    return;
+  }
 
   const device = state.config.deviceList[state.selectedDevice];
   if (!device) return;
@@ -755,7 +1047,15 @@ document.addEventListener("click", async (event) => {
     const expanded = panelToggle.getAttribute("aria-expanded") !== "true";
     panelToggle.setAttribute("aria-expanded", String(expanded));
     panelToggle.querySelector(".panel-chevron").textContent = expanded ? "−" : "+";
-    if (panelToggle.dataset.panelToggle === "device") {
+    if (panelToggle.dataset.panelToggle === "advanced") {
+      state.expandedAdvanced[panelToggle.dataset.advancedKey] = expanded;
+      panelToggle.closest(".device-card").querySelector(".device-card-body").hidden = !expanded;
+      panelToggle.closest(".device-card").classList.toggle("is-expanded", expanded);
+    } else if (panelToggle.dataset.panelToggle === "roomDevice") {
+      state.expandedRoomDevices[`${state.selectedRoom}::${panelToggle.dataset.deviceType}`] = expanded;
+      panelToggle.closest(".object-card").querySelector(".object-card-body").hidden = !expanded;
+      panelToggle.closest(".object-card").classList.toggle("is-expanded", expanded);
+    } else if (panelToggle.dataset.panelToggle === "device") {
       state.expandedDevices[state.selectedDevice] = expanded;
       $("#device-config-panel").hidden = !expanded;
       panelToggle.closest(".device-card").classList.toggle("is-expanded", expanded);
@@ -773,6 +1073,14 @@ document.addEventListener("click", async (event) => {
   if (selectButton) {
     state.selectedDevice = selectButton.dataset.selectDevice;
     state.selectedView = "device";
+    render();
+    return;
+  }
+
+  const roomButton = event.target.closest("[data-select-room]");
+  if (roomButton) {
+    state.selectedRoom = Number(roomButton.dataset.selectRoom);
+    state.selectedView = "room";
     render();
     return;
   }
@@ -842,6 +1150,41 @@ document.addEventListener("click", async (event) => {
           state.selectedConnection = Object.keys(state.config.connections)[0] || null;
         }
         break;
+      case "add-room": {
+        const { rooms } = state.config.roomsSchedules;
+        let index = rooms.length + 1;
+        while (rooms.some((room) => room.scheduleName === `room-${index}`)) index += 1;
+        rooms.push({ scheduleName: `room-${index}`, connectionName: Object.keys(state.config.connections)[0] || "", url: "", devices: {} });
+        state.selectedRoom = rooms.length - 1;
+        state.selectedView = "room";
+        break;
+      }
+      case "delete-room": {
+        const { rooms } = state.config.roomsSchedules;
+        const room = rooms[state.selectedRoom];
+        if (room && confirm(`Remove room '${room.scheduleName}'?`)) {
+          rooms.splice(state.selectedRoom, 1);
+          // Expansion state is keyed by room position, which has just shifted.
+          state.expandedRoomDevices = {};
+          for (const key of Object.keys(state.expandedAdvanced)) if (key.startsWith("room:")) delete state.expandedAdvanced[key];
+        }
+        break;
+      }
+      case "add-room-device": {
+        const room = state.config.roomsSchedules.rooms[state.selectedRoom];
+        const type = Object.keys(state.config.deviceList).find((name) => !Object.hasOwn(room.devices, name));
+        if (!type) {
+          showNotice("All LoRaWAN device types are already in this room, or none exists yet.", "error");
+          break;
+        }
+        room.devices[type] = { deviceNums: [], AVToBindName: downlinkObjectNames(type)[0] || "" };
+        state.expandedRoomDevices[`${state.selectedRoom}::${type}`] = true;
+        break;
+      }
+      case "delete-room-device":
+        delete state.config.roomsSchedules.rooms[state.selectedRoom].devices[actionButton.dataset.deviceType];
+        delete state.expandedRoomDevices[`${state.selectedRoom}::${actionButton.dataset.deviceType}`];
+        break;
       case "add-object": {
         const base = "object";
         let index = 1;
@@ -898,22 +1241,102 @@ document.addEventListener("click", async (event) => {
 });
 
 $("#import-file").addEventListener("change", async (event) => {
-  const file = event.target.files?.[0];
-  if (!file) return;
+  const files = Array.from(event.target.files || []);
+  if (!files.length) return;
   try {
-    const parsed = JSON.parse(await file.text());
-    const importedList = parsed.deviceList || parsed;
-    if (!importedList || typeof importedList !== "object" || Array.isArray(importedList)) throw new Error("Expected a device-list JSON object.");
-    const importedConnections = rebuildConnectionsFromDeviceList(importedList);
-    state.config.deviceList = importedList;
-    state.config.connections = importedConnections.connections;
-    state.config.deviceConnections = importedConnections.deviceConnections;
+    const importedFiles = await Promise.all(files.map(async (file) => ({
+      filename: file.name.toLowerCase(),
+      value: JSON.parse(await file.text())
+    })));
+    const imported = {};
+    for (const [index, file] of importedFiles.entries()) {
+      let kind;
+      if (file.filename === "devicelist.json") kind = "deviceList";
+      else if (file.filename === "mqtt-connections.json" || file.filename === "mqtt-connection.json") kind = "mqtt";
+      else if (file.filename === "rooms-schedules.json") kind = "roomsSchedules";
+      else if (file.filename === "bms-connections.json" || file.filename === "connections.json") kind = "bmsConnections";
+      else if (files.length === 1 || file.value?.deviceList) kind = "deviceList";
+      else throw new Error(`Unrecognized configuration file: ${files[index].name}`);
+      if (Object.hasOwn(imported, kind)) throw new Error(`More than one ${kind} file was selected.`);
+      imported[kind] = file.value;
+    }
+
+    const candidate = structuredClone(state.config);
+    if (imported.deviceList !== undefined) {
+      const importedList = imported.deviceList.deviceList || imported.deviceList;
+      if (!importedList || typeof importedList !== "object" || Array.isArray(importedList)) {
+        throw new Error("Expected a device-list JSON object.");
+      }
+      if (Object.values(importedList).some((device) => !device || typeof device !== "object" || Array.isArray(device))) {
+        throw new Error("Every device-list entry must be a JSON object.");
+      }
+      candidate.deviceList = importedList;
+      const rebuilt = rebuildConnectionsFromDeviceList(importedList);
+      candidate.connections = rebuilt.connections;
+      candidate.deviceConnections = rebuilt.deviceConnections;
+    }
+    if (imported.bmsConnections !== undefined) {
+      const bmsData = imported.bmsConnections;
+      const bmsConnections = bmsData?.["bms-connections"] || bmsData?.connections;
+      if (!bmsConnections || typeof bmsConnections !== "object" || Array.isArray(bmsConnections)) {
+        throw new Error("Expected a BMS connections JSON object.");
+      }
+      candidate.connections = bmsConnections;
+      if (bmsData.deviceConnections !== undefined) {
+        if (!bmsData.deviceConnections || typeof bmsData.deviceConnections !== "object" || Array.isArray(bmsData.deviceConnections)) {
+          throw new Error("Expected deviceConnections to be a JSON object.");
+        }
+        candidate.deviceConnections = bmsData.deviceConnections;
+      }
+    }
+    for (const [deviceName, device] of Object.entries(candidate.deviceList)) {
+      const connectionName = candidate.deviceConnections?.[deviceName] || device.controller?.connectionName || "";
+      candidate.deviceConnections[deviceName] = connectionName;
+      applyConnection(device, candidate.connections[connectionName], connectionName);
+    }
+    if (imported.roomsSchedules !== undefined) {
+      if (!imported.roomsSchedules || typeof imported.roomsSchedules !== "object" || Array.isArray(imported.roomsSchedules)) {
+        throw new Error("Expected a rooms-schedules JSON object.");
+      }
+      candidate.roomsSchedules = imported.roomsSchedules;
+    }
+    if (candidate.roomsSchedules.icalToScheduleConf && typeof candidate.roomsSchedules.icalToScheduleConf === "object") {
+      candidate.roomsSchedules.icalToScheduleConf.logs = {
+        ...defaultRoomsSchedules().icalToScheduleConf.logs,
+        ...candidate.roomsSchedules.icalToScheduleConf.logs
+      };
+    }
+    const mqttSettings = imported.mqtt;
+    if (mqttSettings !== undefined && (!mqttSettings || typeof mqttSettings !== "object" || Array.isArray(mqttSettings))) {
+      throw new Error("Expected an MQTT connections JSON object.");
+    }
+    if (mqttSettings?.autoConnect !== undefined && typeof mqttSettings.autoConnect !== "boolean") {
+      throw new Error("MQTT autoConnect must be a boolean.");
+    }
+
+    const validation = await fetch("/api/config/validate?roomsSchedules=true", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(candidate)
+    });
+    const validationResult = await validation.json();
+    if (!validation.ok) {
+      throw new Error(validationResult.errors?.map((item) => `${item.path}: ${item.message}`).join("\n") || "Imported configuration is invalid.");
+    }
+
+    state.config = candidate;
+    if (mqttSettings !== undefined) {
+      for (const field of ["server", "port", "username", "password", "topic"]) {
+        if (mqttSettings[field] !== undefined) $(`#mqtt-${field}`).value = String(mqttSettings[field]);
+      }
+      if (mqttSettings.autoConnect !== undefined) $("#mqtt-auto-connect").checked = mqttSettings.autoConnect === true;
+    }
     state.expandedDevices = {};
     state.expandedObjects = {};
-    state.selectedDevice = Object.keys(importedList)[0] || null;
+    state.selectedDevice = Object.keys(candidate.deviceList)[0] || null;
     state.selectedView = "device";
     render();
-    showNotice("JSON imported. Save to persist this configuration.");
+    showNotice(`${files.length} JSON file${files.length === 1 ? "" : "s"} imported. Save to persist this configuration.`);
   } catch (error) {
     showNotice(`Import failed: ${error.message}`, "error");
   }

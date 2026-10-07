@@ -1,0 +1,94 @@
+{
+  "icalToScheduleConf": {
+    "timeBetweenScheduleUpdate": 30,
+    "timeBetweenScheduleAVUpdate": 20,
+    "scheduleInstanceRange": [
+      0,
+      50
+    ],
+    "scheduleAVInstanceOffset": 10000,
+    "defaults": {
+      "groupEvents": true,
+      "timeZone": "Europe/Paris",
+      "eventsToDiscard": [
+        "SOBRIETE ENERGETIQUE"
+      ],
+      "minimumSlotDuration": 0,
+      "valueOccupied": 20,
+      "valueUnOccupied": 16,
+      "timeOffsetBeforeStart": 0,
+      "timeOffsetBeforeEnd": 0,
+      "nbrDaysPreview": 15,
+      "addSuffixToAdeURL": false,
+      "weekly": {
+        "monday": {
+          "transitions": {}
+        },
+        "tuesday": {
+          "transitions": {}
+        },
+        "wednesday": {
+          "transitions": {}
+        },
+        "thursday": {
+          "transitions": {}
+        },
+        "friday": {
+          "transitions": {
+            "1": {
+              "time": "15:00:00.00",
+              "value": 7,
+              "key": "1"
+            }
+          }
+        },
+        "saturday": {
+          "transitions": {
+            "1": {
+              "time": "00:00:00.00",
+              "value": 7,
+              "key": "1"
+            }
+          }
+        },
+        "sunday": {
+          "transitions": {
+            "1": {
+              "time": "00:00:00.00",
+              "value": 7,
+              "key": "1"
+            },
+            "2": {
+              "time": "22:00:00.00",
+              "value": null,
+              "key": "2"
+            }
+          }
+        }
+      }
+    },
+    "logs": {
+      "eventsAddedInSchedules": true,
+      "eventTimeCreation": true,
+      "scheduleAVUpdate": true
+    }
+  },
+  "rooms": [
+    {
+      "scheduleName": "8D-121",
+      "connectionName": "Distech Control Apex",
+      "url": "https://ade-usmb-ro.grenet.fr/jsp/custom/modules/plannings/direct_cal.jsp?data=b5cfb898a9c27be94975c12c6eb30e9233bdfae22c1b52e2cd88eb944acf5364c69e3e5921f4a6ebe36e93ea9658a08f,1&resources=9557&projectId=1&calType=ical",
+      "devices": {
+        "usmb-valve": {
+          "deviceNums": [
+            1,
+            2,
+            3
+          ],
+          "AVToBindName": "controllerSetpoint"
+        }
+      },
+      "timeOffsetBeforeEnd": 0
+    }
+  ]
+}

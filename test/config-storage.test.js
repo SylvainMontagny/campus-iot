@@ -17,6 +17,10 @@ test("stores only the device map in deviceList.json", async (context) => {
         bacnetLogin: "operator",
         bacnetPassword: "secret",
         networkServer: "tts"
+      },
+      Unused: {
+        ipAddress: "10.20.30.41",
+        protocol: "bacnet"
       }
     },
     deviceConnections: { sensor: "Office" },
@@ -48,14 +52,15 @@ test("stores only the device map in deviceList.json", async (context) => {
   await writeConfig(materialized, directory);
   const savedDeviceList = JSON.parse(await fs.readFile(path.join(directory, "deviceList.json"), "utf8"));
   assert.equal(savedDeviceList.sensor.controller.ipAddress, "10.20.30.40");
-  const savedConnections = JSON.parse(await fs.readFile(path.join(directory, "connections.json"), "utf8"));
-  assert.equal(savedConnections.connections.Office.ipAddress, "10.20.30.40");
+  const savedConnections = JSON.parse(await fs.readFile(path.join(directory, "bms-connections.json"), "utf8"));
+  assert.equal(savedConnections["bms-connections"].Office.ipAddress, "10.20.30.40");
 
   const restored = await readConfig(directory);
   assert.deepEqual(restored.deviceList, savedDeviceList);
   assert.equal(restored.deviceList.sensor.controller.connectionName, "Office");
   assert.equal(restored.connections.Office.ipAddress, "10.20.30.40");
   assert.equal(restored.connections.Office.bacnetLogin, "operator");
+  assert.equal(restored.connections.Unused.ipAddress, "10.20.30.41");
   assert.deepEqual(restored.deviceConnections, config.deviceConnections);
 });
 
