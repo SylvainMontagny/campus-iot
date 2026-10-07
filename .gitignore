@@ -33,3 +33,5 @@ data/mqtt-connections.json
 data/mqtt-connections.json.tmp
 data/deviceList.json
 data/deviceList.json.tmp
+data/rooms-schedules.json
+data/rooms-schedules.json.tmp

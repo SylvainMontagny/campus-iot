@@ -137,7 +137,8 @@ async function writeRoomsSchedules(roomsSchedules, directory = dataDirectory) {
   await fs.mkdir(directory, { recursive: true });
   await writeJsonAtomically(path.join(directory, "rooms-schedules.json"), {
     icalToScheduleConf: roomsSchedules.icalToScheduleConf,
-    rooms: roomsSchedules.rooms
+    rooms: roomsSchedules.rooms,
+    excludedRooms: roomsSchedules.excludedRooms || []
   });
 }
 

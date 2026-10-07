@@ -203,7 +203,7 @@ function renderGlobal() {
   removeButton.disabled = false;
   const fields = [
     `<div class="field-row">${inputField("BMS IP address", "ipAddress", global.ipAddress, { placeholder: "192.168.1.10" })}</div>`,
-    `<div class="field-row">${selectField("Network server", "networkServer", global.networkServer, [["tts", "The Things Stack"], ["chirpstack", "ChirpStack"], ["actility", "Actility"]])}</div>`,
+    `<div class="field-row">${selectField("LoRaWAN Network server", "networkServer", global.networkServer, [["tts", "The Things Stack"], ["chirpstack", "ChirpStack"], ["actility", "Actility"]])}</div>`,
     `<div class="field-pair">${selectField("BMS protocol", "protocol", global.protocol, [["bacnet", "BACnet"], ["restAPIBacnet", "REST API BACnet"]])}${global.protocol === "restAPIBacnet" ? selectField("REST API model", "model", global.model, [["distechControlsV2", "Distech Controls v2"]]) : ""}</div>`
   ];
   if (global.networkServer === "chirpstack") {
@@ -230,7 +230,8 @@ function renderNavigation() {
   state.selectedRoom = rooms.length ? Math.min(Math.max(state.selectedRoom ?? 0, 0), rooms.length - 1) : null;
   $("#room-navigation").innerHTML = rooms.map((room, index) => `
     <button class="device-nav-item${state.selectedView === "room" && index === state.selectedRoom ? " is-selected" : ""}" type="button" data-select-room="${index}">
-      <span class="device-nav-copy"><strong>${escapeHtml(room.scheduleName)}</strong><small>${Object.keys(room.devices || {}).length} device types</small></span>
+      <span class="device-nav-copy"><strong>${escapeHtml(room.scheduleName)}</strong><small>${Object.keys(room.devices || {}).length} device types · ${room.excluded ? "Excluded" : "Included"}</small></span>
+      <span class="nav-status-dot ${room.excluded ? "is-excluded" : "is-included"}" title="${room.excluded ? "Excluded" : "Included"}" aria-hidden="true"></span>
       <span class="nav-chevron" aria-hidden="true">›</span>
     </button>`).join("");
   $("#connection-navigation").innerHTML = connections.map(([name]) => `
@@ -263,10 +264,10 @@ function renderDevice() {
     `<div class="field-row">${inputField("Device type name", "_name", name)}</div>`,
     `<div class="field-row">${selectField("LoRaWAN class", "lorawan.class", device.lorawan?.class || "A", [["A", "Class A"], ["B", "Class B"], ["C", "Class C"]])}</div>`,
     `<div class="field-row">${selectField("BMS connection", "deviceConnection", assignedConnection, connectionOptions).replace("data-path=", "data-device-connection=")}</div>`,
-    `<div class="field-row">${inputField("Max device number", "identity.maxDevNum", device.identity?.maxDevNum, { type: "number", min: 1, step: 1 })}</div>`,
+    `<div class="field-row">${inputField("Maximum number of this device", "identity.maxDevNum", device.identity?.maxDevNum, { type: "number", min: 1, step: 1 })}</div>`,
     `<div class="field-row">${selectField("Flush downlink queue", "lorawan.flushDownlinkQueue", String(Boolean(device.lorawan?.flushDownlinkQueue)), [["false", "No"], ["true", "Yes"]])}</div>`,
-    `<div class="field-pair">${inputField("AV instance offset", "bacnet.offsetAV", device.bacnet.offsetAV, { type: "number", min: 0, step: 1 })}${inputField("AV instance range", "bacnet.instanceRangeAV", device.bacnet.instanceRangeAV, { type: "number", min: 0, step: 1 })}</div>`,
-    `<div class="field-pair">${inputField("BV instance offset", "bacnet.offsetBV", device.bacnet.offsetBV, { type: "number", min: 0, step: 1 })}${inputField("BV instance range", "bacnet.instanceRangeBV", device.bacnet.instanceRangeBV, { type: "number", min: 0, step: 1 })}</div>`
+    `<div class="field-pair">${inputField("First AV instance number", "bacnet.offsetAV", device.bacnet.offsetAV, { type: "number", min: 0, step: 1 })}${inputField("Number of AV for this device", "bacnet.instanceRangeAV", device.bacnet.instanceRangeAV, { type: "number", min: 0, step: 1 })}</div>`,
+    `<div class="field-pair">${inputField("First BV instance number", "bacnet.offsetBV", device.bacnet.offsetBV, { type: "number", min: 0, step: 1 })}${inputField("Number of BV for this device", "bacnet.instanceRangeBV", device.bacnet.instanceRangeBV, { type: "number", min: 0, step: 1 })}</div>`
   ];
   let actilityFields = "";
   if (device.lorawan.networkServer === "actility" && hasDownlink(device)) {
@@ -278,7 +279,7 @@ function renderDevice() {
   }
 
   container.innerHTML = `
-    <div class="section-heading device-heading"><div><h2>Device type</h2></div></div>
+    <div class="section-heading device-heading"><div><h2>LoRaWAN device configuration</h2></div></div>
     <section class="device-card${deviceExpanded ? " is-expanded" : ""}">
       <div class="panel-heading-row">
         <button class="panel-toggle" type="button" data-panel-toggle="device" aria-expanded="${deviceExpanded}" aria-controls="device-config-panel">
@@ -291,11 +292,11 @@ function renderDevice() {
       </div>
       <div id="device-config-panel" class="device-card-body"${deviceExpanded ? "" : " hidden"}>
       <div class="field-grid">${deviceFields.join("")}</div>
-      <div class="subsection-heading debug-heading"><div><span class="eyebrow">DIAGNOSTICS</span><h3>Debug events</h3></div></div>
+      <div class="subsection-heading debug-heading"><div><h3>Print debug events</h3></div></div>
       <div class="check-grid">${checkbox("All events", debug.includes("all"), "all")}${checkbox("Uplink events", debug.includes("up"), "up")}${checkbox("Downlink events", debug.includes("down"), "down")}${checkbox("Creation events", debug.includes("creation"), "creation")}${checkbox("Transmit time", debug.includes("txTime"), "txTime")}</div>
       <div class="subsection-heading debug-heading"><div><h3>Print device object</h3></div></div>
       <div class="check-grid">${checkbox("After MQTT reception", debug.includes("deviceMqtt"), "deviceMqtt")}${checkbox("After uplink process", debug.includes("deviceUplink"), "deviceUplink")}${checkbox("After downlink process", debug.includes("deviceDownlink"), "deviceDownlink")}</div>
-      <div class="subsection-heading debug-heading"><div><h3>Print previousValues</h3></div></div>
+      <div class="subsection-heading debug-heading"><div><h3>Print previousValues object</h3></div></div>
       <div class="check-grid">${checkbox("After MQTT reception", debug.includes("previousValuesMqtt"), "previousValuesMqtt")}</div>
       ${actilityFields}
       </div>
@@ -317,8 +318,8 @@ function renderObject(name, object) {
   const uplinkObjectOptions = [["", "Select an uplink object"], ...uplinkNames.map((candidateName) => [candidateName, candidateName])];
   const core = [
     `<div class="field-row">${inputField("LoRaWAN payload name", "lorawanPayloadName", object.lorawanPayloadName || "")}</div>`,
-    `<div class="field-row">${inputField("BACnet object name", "_name", name)}</div>`,
-    `<div class="field-row">${selectField("BACnet Object type", "objectType", object.objectType, [["analogValue", "Analog value"], ["binaryValue", "Binary value"]])}</div>`,
+    `<div class="field-pair">${inputField("BACnet object name", "_name", name)}${selectField("BACnet Object type", "objectType", object.objectType, [["analogValue", "Analog value"], ["binaryValue", "Binary value"]])}</div>`,
+   
     `<div class="field-pair">${selectField("Assignation mode", "assignementMode", object.assignementMode, [["auto", "Automatic"], ["manual", "Manual"]])}${inputField(instanceLabel, "instanceNum", object.instanceNum, { type: "number", min: 0, step: 1 })}</div>`,
     `<div class="field-row">${selectField("Direction", "dataDirection", object.dataDirection, [["uplink", "Uplink"], ["downlink", "Downlink"]])}</div>`
   ];
@@ -350,16 +351,16 @@ const TIME_ZONES = ["Europe/Paris", "UTC", "Europe/London", "Europe/Brussels", "
 
 // Settings shared by the global defaults and every room (a room only stores the ones it overrides).
 const SCHEDULE_SETTINGS = [
-  { key: "groupEvents", kind: "boolean", label: "Do you want to merge all daily event as one?" },
+  { key: "groupEvents", kind: "boolean", label: "Merge all daily events into one?" },
   { key: "timeZone", kind: "timezone", label: "Time zone", globalLabel: "Default time zone" },
-  { key: "eventsToDiscard", kind: "list", label: "Names of the events to discard in the agenda", globalLabel: "Default names of the events to discard in the agenda" },
-  { key: "minimumSlotDuration", kind: "number", min: 0, label: "Minimum duration (mins) for an event in the agenda" },
-  { key: "valueOccupied", kind: "number", label: "Value when the room is occupied", globalLabel: "Default value when the room is occupied" },
-  { key: "valueUnOccupied", kind: "number", label: "Value when the room is unoccupied", globalLabel: "Default value when the room is unoccupied" },
-  { key: "timeOffsetBeforeStart", kind: "number", min: 0, groupedOnly: true, label: "Time offset (mins) before the start of the merged event" },
-  { key: "timeOffsetBeforeEnd", kind: "number", min: 0, groupedOnly: true, label: "Time offset (mins) before the end of the merged event" },
+  { key: "eventsToDiscard", kind: "list", label: "Event names to discard", globalLabel: "Default event names to discard" },
+  { key: "minimumSlotDuration", kind: "number", min: 0, label: "Minimum event duration (minutes)" },
+  { key: "valueOccupied", kind: "number", label: "Value when the room is occupied", globalLabel: "Default value when the room is OCCUPIED" },
+  { key: "valueUnOccupied", kind: "number", label: "Value when the room is unoccupied", globalLabel: "Default value when the room is UNOCCUPIED" },
+  { key: "timeOffsetBeforeStart", kind: "number", min: 0, groupedOnly: true, label: "End earlier by (minutes)" },
+  { key: "timeOffsetBeforeEnd", kind: "number", min: 0, groupedOnly: true, label: "Stop earlier by (minutes)" },
   { key: "nbrDaysPreview", kind: "number", min: 1, step: 1, label: "Number of days to anticipate", globalLabel: "Default number of days to anticipate" },
-  { key: "addSuffixToAdeURL", kind: "boolean", label: "Add &lastDate=<today + days to anticipate> to the ADE URL" },
+  { key: "addSuffixToAdeURL", kind: "boolean", label: "Add <today + days to anticipate> to the ADE URL" },
   { key: "weekly", kind: "json", label: "Weekly schedule", globalLabel: "Default weekly schedule" }
 ];
 
@@ -448,18 +449,18 @@ function renderScheduleGlobal() {
   const valueOf = (key) => conf.defaults[key];
   const advanced = `
     <div class="field-grid">
-      <div class="field-row">${confField("Time (sec) between 2 scheduleAV updates", "timeBetweenScheduleAVUpdate", conf.timeBetweenScheduleAVUpdate, { min: 1 })}</div>
-      <div class="field-row">${confField("First instance number for scheduleAV", "scheduleAVInstanceOffset", conf.scheduleAVInstanceOffset, { min: 0 })}</div>
+      <div class="field-row">${confField("ScheduleAV update interval (seconds)", "timeBetweenScheduleAVUpdate", conf.timeBetweenScheduleAVUpdate, { min: 1 })}</div>
+      <div class="field-row">${confField("First ScheduleAV instance number", "scheduleAVInstanceOffset", conf.scheduleAVInstanceOffset, { min: 0 })}</div>
     </div>
-    <div class="subsection-heading debug-heading"><div><h3>Schedules instance number range when creating new 'schedule BACnet object'</h3></div></div>
-    <div class="field-grid"><div class="field-pair">${confField("First schedule instance number", "scheduleInstanceRange.0", first, { min: 0 })}${confField("Last schedule instance number", "scheduleInstanceRange.1", last, { min: 0 })}</div></div>
+    <div class="subsection-heading debug-heading"><div><h3>Schedule instance number range</h3></div></div>
+    <div class="field-grid"><div class="field-pair">${confField("First instance number", "scheduleInstanceRange.0", first, { min: 0 })}${confField("Last instance number", "scheduleInstanceRange.1", last, { min: 0 })}</div></div>
     <div class="subsection-heading debug-heading"><div><h3>Default room settings</h3></div></div>
     <div class="field-grid">${scheduleSettingRows(SCHEDULE_ROWS.filter((row) => row !== OCCUPANCY_ROW && row !== OFFSET_ROW), valueOf, "data-schedule-default", true, grouped)}</div>`;
   $("#schedule-global-editor").innerHTML = `
     <div class="section-heading"><div><h2>Basic settings</h2></div></div>
     <div class="field-grid">
       ${scheduleSettingRows([OCCUPANCY_ROW, OFFSET_ROW], valueOf, "data-schedule-default", true, grouped)}
-      <div class="field-row">${confField("Time (sec) between 2 schedule updates", "timeBetweenScheduleUpdate", conf.timeBetweenScheduleUpdate, { min: 1 })}</div>
+      <div class="field-row">${confField("Schedule update interval (seconds)", "timeBetweenScheduleUpdate", conf.timeBetweenScheduleUpdate, { min: 1 })}</div>
     </div>
     <div class="subsection-heading debug-heading"><div><h3>Message log</h3></div></div>
     <div class="check-grid">${SCHEDULE_LOGS.map(([key, label]) => `<label class="check-field"><input type="checkbox" data-schedule-log="${key}"${conf.logs[key] !== false ? " checked" : ""}><span>${escapeHtml(label)}</span></label>`).join("")}</div>
@@ -508,8 +509,8 @@ function renderRoom() {
 
   container.innerHTML = `
     <div class="section-heading device-heading"><div><h2>Room</h2></div></div>
-    <section class="config-section schedule-section">
-      <div class="section-heading"><div><h2>Basic settings</h2></div><button class="button button-danger-quiet" type="button" data-action="delete-room">Remove room</button></div>
+    <section class="config-section schedule-section${room.excluded ? " is-room-excluded" : ""}">
+      <div class="section-heading"><div><h2>Basic settings</h2></div>      <div class="heading-actions"><button class="button button-outline" type="button" data-action="toggle-room-excluded">${room.excluded ? "Include" : "Exclude"}</button><button class="button button-danger-quiet" type="button" data-action="delete-room">Remove room</button></div></div>
       <div class="field-grid">
         <div class="field-row">${roomField(inputField("Room / schedule name", "scheduleName", room.scheduleName))}</div>
         <div class="field-row">${roomField(selectField("On which BACnet BMS will be the agenda", "connectionName", room.connectionName || "", connectionOptions))}</div>
@@ -517,8 +518,9 @@ function renderRoom() {
       </div>
       ${advancedPanel(`room:${state.selectedRoom}`, `<div class="field-grid">${scheduleSettingRows(SCHEDULE_ROWS, (key) => room[key] ?? defaults[key], "data-room-field", false, grouped)}</div>`)}
     </section>
+    <div class="room-devices${room.excluded ? " is-room-excluded" : ""}">
     <div class="objects-heading"><div><h2>Devices <span class="object-count">${Object.keys(room.devices).length}</span></h2></div><button class="button button-outline" type="button" data-action="add-room-device">+ Add device</button></div>
-    <div class="object-list">${deviceRows || `<div class="empty-objects">No device yet. Add the LoRaWAN devices controlled by this room schedule.</div>`}</div>`;
+    <div class="object-list">${deviceRows || `<div class="empty-objects">No device yet. Add the LoRaWAN devices controlled by this room schedule.</div>`}</div></div>`;
 }
 
 function handleRoomField(input) {
@@ -583,12 +585,12 @@ function render() {
   $("#mqtt-section").hidden = view !== "mqtt";
   $("#log-section").hidden = view !== "log";
   const pages = {
-    global: [state.selectedConnection || "BMS connections", "These settings will be assigned to a LoRaWAN device type"],
-    mqtt: ["MQTT connection", "Enter the MQTT client credentials"],
+    global: [state.selectedConnection || "BMS connections"],
+    mqtt: ["MQTT connection"],
     log: ["Message log", ""],
     "schedule-global": ["Rooms & Schedules", "Global configuration"],
-    room: [state.config.roomsSchedules.rooms[state.selectedRoom]?.scheduleName || "Rooms & Schedules", "Agenda, BMS connection and devices of this room"],
-    device: ["Device configuration", "Device fleet settings and BACnet object mapping."]
+    room: [state.config.roomsSchedules.rooms[state.selectedRoom]?.scheduleName || "Rooms & Schedules", "Specific configuration for this room "],
+    device: ["LoRaWAN to BACnet configuration"]
   };
   [$("#page-title").textContent, $("#page-description").textContent] = pages[view];
 }
@@ -692,12 +694,34 @@ function setConnectionValue(path, value) {
   render();
 }
 
+// The editor keeps every room in one list with an excluded flag; the stored
+// format keeps included rooms in `rooms` and excluded ones in `excludedRooms`.
+function splitRooms(roomsSchedules) {
+  const rooms = roomsSchedules.rooms || [];
+  return {
+    ...roomsSchedules,
+    rooms: rooms.filter((room) => room.excluded !== true).map((room) => ({ ...room, excluded: false })),
+    excludedRooms: rooms.filter((room) => room.excluded === true).map((room) => ({ ...room, excluded: true }))
+  };
+}
+
+function mergeRooms(roomsSchedules) {
+  const { excludedRooms = [], rooms = [], ...rest } = roomsSchedules;
+  return {
+    ...rest,
+    rooms: [
+      ...rooms.map((room) => ({ ...room, excluded: false })),
+      ...excludedRooms.map((room) => ({ ...room, excluded: true }))
+    ]
+  };
+}
+
 function downloadConfig() {
   syncAssignedConnections();
   const files = [
     ["deviceList.json", state.config.deviceList],
     ["mqtt-connections.json", readMqttForm()],
-    ["rooms-schedules.json", state.config.roomsSchedules],
+    ["rooms-schedules.json", splitRooms(state.config.roomsSchedules)],
     ["bms-connections.json", {
       "bms-connections": state.config.connections,
       deviceConnections: state.config.deviceConnections
@@ -719,7 +743,7 @@ async function saveConfig() {
   const response = await fetch("/api/config", {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(state.config)
+    body: JSON.stringify({ ...state.config, roomsSchedules: splitRooms(state.config.roomsSchedules) })
   });
   const result = await response.json();
   if (!response.ok) {
@@ -747,7 +771,7 @@ async function loadConfig() {
     state.config.connections ||= {};
     state.config.deviceConnections ||= {};
     state.config.deviceList ||= {};
-    state.config.roomsSchedules ||= defaultRoomsSchedules();
+    state.config.roomsSchedules = mergeRooms(state.config.roomsSchedules || defaultRoomsSchedules());
     const scheduleConf = state.config.roomsSchedules.icalToScheduleConf;
     scheduleConf.logs = { ...defaultRoomsSchedules().icalToScheduleConf.logs, ...scheduleConf.logs };
     for (const deviceName of Object.keys(state.config.deviceList)) state.config.deviceConnections[deviceName] ||= "";
@@ -1154,9 +1178,14 @@ document.addEventListener("click", async (event) => {
         const { rooms } = state.config.roomsSchedules;
         let index = rooms.length + 1;
         while (rooms.some((room) => room.scheduleName === `room-${index}`)) index += 1;
-        rooms.push({ scheduleName: `room-${index}`, connectionName: Object.keys(state.config.connections)[0] || "", url: "", devices: {} });
+        rooms.push({ scheduleName: `room-${index}`, connectionName: Object.keys(state.config.connections)[0] || "", url: "", excluded: false, devices: {} });
         state.selectedRoom = rooms.length - 1;
         state.selectedView = "room";
+        break;
+      }
+      case "toggle-room-excluded": {
+        const room = state.config.roomsSchedules.rooms[state.selectedRoom];
+        if (room) room.excluded = !room.excluded;
         break;
       }
       case "delete-room": {
@@ -1298,7 +1327,7 @@ $("#import-file").addEventListener("change", async (event) => {
       if (!imported.roomsSchedules || typeof imported.roomsSchedules !== "object" || Array.isArray(imported.roomsSchedules)) {
         throw new Error("Expected a rooms-schedules JSON object.");
       }
-      candidate.roomsSchedules = imported.roomsSchedules;
+      candidate.roomsSchedules = mergeRooms(imported.roomsSchedules);
     }
     if (candidate.roomsSchedules.icalToScheduleConf && typeof candidate.roomsSchedules.icalToScheduleConf === "object") {
       candidate.roomsSchedules.icalToScheduleConf.logs = {
@@ -1317,7 +1346,7 @@ $("#import-file").addEventListener("change", async (event) => {
     const validation = await fetch("/api/config/validate?roomsSchedules=true", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(candidate)
+      body: JSON.stringify({ ...candidate, roomsSchedules: splitRooms(candidate.roomsSchedules) })
     });
     const validationResult = await validation.json();
     if (!validation.ok) {

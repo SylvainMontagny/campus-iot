@@ -58,6 +58,10 @@ button { cursor: pointer; }
 .mqtt-log-tools { display: flex; align-items: center; gap: 10px; }
 .mqtt-glyph { color: #366a58; background: #d6e8db; font-weight: 500; }
 .nav-status-dot { width: 7px; height: 7px; flex: 0 0 auto; border-radius: 50%; background: #aab5ad; }
+.nav-status-dot.is-included { background: #3a9b5a; box-shadow: 0 0 0 3px rgb(58 155 90 / 13%); }
+.nav-status-dot.is-excluded { background: #c0483a; box-shadow: 0 0 0 3px rgb(192 72 58 / 13%); }
+.heading-actions { display: flex; gap: 8px; align-items: center; }
+.is-room-excluded .field-grid, .room-devices.is-room-excluded { opacity: .45; filter: grayscale(1); pointer-events: none; }
 .nav-status-dot.is-connected { background: #3a9b5a; box-shadow: 0 0 0 3px rgb(58 155 90 / 13%); }
 .connection-glyph { width: 23px; height: 23px; color: #657a6d; background: #dce5dc; font-size: 14px; }
 .add-profile-button { margin: 4px 4px 13px 16px; padding-top: 5px; padding-bottom: 5px; font-size: 11px; }

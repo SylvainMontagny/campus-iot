@@ -98,6 +98,9 @@ function validateRoomsSchedules(data, { deviceList = {}, connections = {} } = {}
   }
 
   const names = new Set();
+  if (data.excludedRooms !== undefined && !Array.isArray(data.excludedRooms)) {
+    errors.push(issue("Excluded rooms must be a list", "roomsSchedules.excludedRooms"));
+  }
   const usedNumbers = {};
   data.rooms.forEach((room, index) => {
     const roomPath = `roomsSchedules.rooms.${index}`;
