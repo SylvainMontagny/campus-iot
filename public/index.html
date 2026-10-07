@@ -17,11 +17,11 @@
       </a>
       <div class="topbar-right">
         <span id="mqtt-state" class="connection-state"><span class="state-dot state-dot-offline"></span>MQTT offline</span>
-        <button id="import-button" class="button button-quiet" type="button">Import JSON</button>
-        <button id="export-button" class="button button-quiet" type="button">Export JSON</button>
-        <button id="edit-json-button" class="button button-quiet" type="button">Edit JSON</button>
-        <button id="save-button" class="button button-primary" type="button">Save configuration</button>
-        <input id="import-file" type="file" accept="application/json,.json" multiple hidden>
+        <button id="import-button" class="button button-quiet" type="button">Import CONF</button>
+        <button id="export-button" class="button button-quiet" type="button">Export CONF</button>
+        <button id="edit-json-button" class="button button-quiet" type="button">Edit CONF</button>
+        <button id="save-button" class="button button-primary" type="button">Save</button>
+        <input id="import-file" type="file" accept="application/json,.json,application/zip,.zip" multiple hidden>
       </div>
     </header>
 
@@ -57,7 +57,7 @@
         </div>
         <div class="rail-group">
           <button class="device-nav-item mqtt-nav-item" type="button" data-select-view="log">
-            <span class="device-nav-copy"><strong>Message log</strong><small>Incoming packets</small></span>
+            <span class="device-nav-copy"><strong>Message log</strong></span>
           </button>
         </div>
       </aside>
@@ -108,17 +108,15 @@
             <label class="mqtt-auto"><input id="mqtt-auto-connect" type="checkbox"> Auto connect on startup</label>
           </div>
           <section class="mqtt-log-section" aria-labelledby="mqtt-raw-title">
-            <div class="mqtt-log-heading"><div><h3 id="mqtt-raw-title">Raw messages</h3></div><span class="mqtt-log-tools"><span id="mqtt-raw-count" class="mqtt-log-count">0 entries</span><button class="button button-outline" type="button" data-toggle-log="raw">Suspend</button><button class="button button-outline" type="button" data-clear-log="mqtt-raw-log">Clear logs</button></span></div>
+            <div class="mqtt-log-heading"><div><h3 id="mqtt-raw-title">MQTT messages</h3></div><span class="mqtt-log-tools"><span id="mqtt-raw-count" class="mqtt-log-count">0 entries</span><button class="button button-outline" type="button" data-toggle-log="raw">Suspend</button><button class="button button-outline" type="button" data-clear-log="mqtt-raw-log">Clear logs</button></span></div>
             <div id="mqtt-raw-log" class="mqtt-log" role="log" aria-live="polite" aria-relevant="additions"></div>
           </section>
         </section>
 
         <section id="log-section" class="config-section mqtt-section" aria-labelledby="log-title" hidden>
-          <div class="section-heading">
-            <div><h2 id="log-title">Incoming packets</h2></div>
-          </div>
+
           <section class="mqtt-log-section" aria-labelledby="mqtt-log-title">
-            <div class="mqtt-log-heading"><div><span class="eyebrow">LIVE ACTIVITY</span><h3 id="mqtt-log-title">Message log</h3></div><span class="mqtt-log-tools"><span id="mqtt-log-count" class="mqtt-log-count">0 entries</span><button class="button button-outline" type="button" data-toggle-log="log">Suspend</button><button class="button button-outline" type="button" data-clear-log="mqtt-log">Clear logs</button></span></div>
+            <div class="mqtt-log-heading"><div></div><span class="mqtt-log-tools"><span id="mqtt-log-count" class="mqtt-log-count">0 entries</span><button class="button button-outline" type="button" data-toggle-log="log">Suspend</button><button class="button button-outline" type="button" data-clear-log="mqtt-log">Clear logs</button></span></div>
             <div id="mqtt-log" class="mqtt-log" role="log" aria-live="polite" aria-relevant="additions"></div>
           </section>
         </section>

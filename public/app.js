@@ -727,15 +727,105 @@ function downloadConfig() {
       deviceConnections: state.config.deviceConnections
     }]
   ];
-  for (const [filename, value] of files) {
-    const blob = new Blob([`${JSON.stringify(value, null, 2)}\n`], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = filename;
-    link.click();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  const entries = files.map(([name, value]) => [name, `${JSON.stringify(value, null, 2)}\n`]);
+  const url = URL.createObjectURL(buildZip(entries));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "Campus-iot-conf.zip";
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+let crcTable;
+function crc32(bytes) {
+  if (!crcTable) {
+    crcTable = Array.from({ length: 256 }, (_, n) => {
+      let c = n;
+      for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+      return c >>> 0;
+    });
   }
+  let crc = 0xffffffff;
+  for (const byte of bytes) crc = crcTable[(crc ^ byte) & 0xff] ^ (crc >>> 8);
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+// Minimal uncompressed (stored) ZIP archive writer.
+function buildZip(entries) {
+  const encoder = new TextEncoder();
+  const parts = [];
+  const central = [];
+  let offset = 0;
+  for (const [name, text] of entries) {
+    const nameBytes = encoder.encode(name);
+    const data = encoder.encode(text);
+    const crc = crc32(data);
+    const local = new DataView(new ArrayBuffer(30));
+    local.setUint32(0, 0x04034b50, true);
+    local.setUint16(4, 20, true);
+    local.setUint16(6, 0x0800, true);
+    local.setUint32(14, crc, true);
+    local.setUint32(18, data.length, true);
+    local.setUint32(22, data.length, true);
+    local.setUint16(26, nameBytes.length, true);
+    parts.push(local, nameBytes, data);
+    const head = new DataView(new ArrayBuffer(46));
+    head.setUint32(0, 0x02014b50, true);
+    head.setUint16(4, 20, true);
+    head.setUint16(6, 20, true);
+    head.setUint16(8, 0x0800, true);
+    head.setUint32(16, crc, true);
+    head.setUint32(20, data.length, true);
+    head.setUint32(24, data.length, true);
+    head.setUint16(28, nameBytes.length, true);
+    head.setUint32(42, offset, true);
+    central.push(head, nameBytes);
+    offset += 30 + nameBytes.length + data.length;
+  }
+  const centralSize = central.reduce((sum, part) => sum + (part.byteLength ?? part.length), 0);
+  const end = new DataView(new ArrayBuffer(22));
+  end.setUint32(0, 0x06054b50, true);
+  end.setUint16(8, entries.length, true);
+  end.setUint16(10, entries.length, true);
+  end.setUint32(12, centralSize, true);
+  end.setUint32(16, offset, true);
+  return new Blob([...parts, ...central, end], { type: "application/zip" });
+}
+
+// Reads a ZIP archive (stored or deflated entries) into [{ name, text }].
+async function readZip(file) {
+  const buffer = await file.arrayBuffer();
+  const view = new DataView(buffer);
+  const bytes = new Uint8Array(buffer);
+  const decoder = new TextDecoder();
+  let eocd = -1;
+  for (let i = buffer.byteLength - 22; i >= 0; i--) {
+    if (view.getUint32(i, true) === 0x06054b50) { eocd = i; break; }
+  }
+  if (eocd < 0) throw new Error(`${file.name} is not a valid ZIP archive.`);
+  const count = view.getUint16(eocd + 10, true);
+  let pos = view.getUint32(eocd + 16, true);
+  const result = [];
+  for (let i = 0; i < count; i++) {
+    const method = view.getUint16(pos + 10, true);
+    const size = view.getUint32(pos + 20, true);
+    const nameLength = view.getUint16(pos + 28, true);
+    const extraLength = view.getUint16(pos + 30, true);
+    const commentLength = view.getUint16(pos + 32, true);
+    const localOffset = view.getUint32(pos + 42, true);
+    const name = decoder.decode(bytes.subarray(pos + 46, pos + 46 + nameLength));
+    pos += 46 + nameLength + extraLength + commentLength;
+    if (name.endsWith("/")) continue;
+    const dataStart = localOffset + 30 + view.getUint16(localOffset + 26, true) + view.getUint16(localOffset + 28, true);
+    let data = bytes.subarray(dataStart, dataStart + size);
+    if (method === 8) {
+      data = new Uint8Array(await new Response(new Blob([data]).stream().pipeThrough(new DecompressionStream("deflate-raw"))).arrayBuffer());
+    } else if (method !== 0) {
+      throw new Error(`Unsupported ZIP compression in ${name}.`);
+    }
+    result.push({ name: name.split("/").pop(), text: decoder.decode(data) });
+  }
+  return result;
 }
 
 async function saveConfig() {
@@ -868,7 +958,7 @@ function prependLogRow(log, row, counter) {
 
 function clearLog(logId) {
   const log = $(`#${logId}`);
-  log.innerHTML = `<div class="mqtt-log-empty">${logId === "mqtt-raw-log" ? "No raw MQTT messages yet." : "No MQTT activity yet."}</div>`;
+  log.innerHTML = `<div class="mqtt-log-empty">${logId === "mqtt-raw-log" ? "No raw MQTT messages yet." : "No activity yet."}</div>`;
   $(logId === "mqtt-raw-log" ? "#mqtt-raw-count" : "#mqtt-log-count").textContent = "0 entries";
 }
 
@@ -1270,13 +1360,24 @@ document.addEventListener("click", async (event) => {
 });
 
 $("#import-file").addEventListener("change", async (event) => {
-  const files = Array.from(event.target.files || []);
-  if (!files.length) return;
+  const selected = Array.from(event.target.files || []);
+  if (!selected.length) return;
   try {
-    const importedFiles = await Promise.all(files.map(async (file) => ({
+    const files = [];
+    for (const file of selected) {
+      if (/\.zip$/i.test(file.name)) {
+        for (const entry of await readZip(file)) {
+          if (/\.json$/i.test(entry.name)) files.push({ name: entry.name, text: entry.text });
+        }
+      } else {
+        files.push({ name: file.name, text: await file.text() });
+      }
+    }
+    if (!files.length) throw new Error("No JSON configuration file found.");
+    const importedFiles = files.map((file) => ({
       filename: file.name.toLowerCase(),
-      value: JSON.parse(await file.text())
-    })));
+      value: JSON.parse(file.text)
+    }));
     const imported = {};
     for (const [index, file] of importedFiles.entries()) {
       let kind;
