@@ -12,11 +12,14 @@
   </head>
   <body>
     <header class="topbar">
-      <a class="brand" href="/" aria-label="Campus IoT Platform home">
-        <span><strong>Campus IoT Platform</strong><small id="app-version"></small></span>
-      </a>
-      <div class="topbar-right">
+      <div class="topbar-left">
+        <a class="brand" href="/" aria-label="Campus IoT Platform home">
+          <span><strong>Campus IoT Platform</strong><small id="app-version"></small></span>
+        </a>
         <span id="mqtt-state" class="connection-state"><span class="state-dot state-dot-offline"></span>MQTT offline</span>
+      </div>
+      <button id="live-logs-button" class="button button-live-logs" type="button" data-select-view="log">Live logs</button>
+      <div class="topbar-right">
         <button id="import-button" class="button button-quiet" type="button">Import CONF</button>
         <button id="export-button" class="button button-quiet" type="button">Export CONF</button>
         <button id="edit-json-button" class="button button-quiet" type="button">Edit CONF</button>
@@ -34,31 +37,22 @@
           </button>
         </div>
         <div class="rail-group">
-          <button class="device-nav-item global-nav-item is-selected" type="button" data-select-view="global">
-            <span class="device-nav-copy"><strong>BMS connections</strong><small id="connection-count">0 named profiles</small></span>
-            <span class="nav-chevron" aria-hidden="true">›</span>
-          </button>
-          <nav id="connection-navigation" class="device-navigation profile-navigation" aria-label="Global connection profiles"></nav>
-          <button class="add-device-button add-profile-button" type="button" data-action="add-connection"><span aria-hidden="true">+</span> Add connection</button>
+          <div class="rail-title rail-title-bms">BMS connections</div>
+          <nav id="connection-navigation" class="device-navigation" aria-label="BMS connections"></nav>
+          <button class="add-device-button add-profile-button" type="button" data-action="add-connection"><span aria-hidden="true">+</span> Add BMS connection</button>
         </div>
         <div class="rail-group">
-          <div class="rail-title">LoRaWAN to BACnet</div>
+          <div class="rail-title rail-title-lorawan">LoRaWAN to BACnet</div>
           <nav id="device-navigation" class="device-navigation" aria-label="Device types"></nav>
           <button id="add-device-button" class="add-device-button" type="button" data-action="add-device"><span aria-hidden="true">+</span> Add device type</button>
         </div>
         <div class="rail-group">
-          <div class="rail-title">Rooms &amp; Schedules</div>
+          <div class="rail-title rail-title-rooms">Rooms &amp; Schedules</div>
           <button class="device-nav-item global-nav-item" type="button" data-select-view="schedule-global">
-            <span class="device-nav-copy"><strong>Global configuration</strong><small>Updates and default settings</small></span>
-            <span class="nav-chevron" aria-hidden="true">›</span>
+            <span class="device-nav-copy"><strong>Global configuration</strong></span>
           </button>
           <nav id="room-navigation" class="device-navigation" aria-label="Rooms"></nav>
           <button class="add-device-button" type="button" data-action="add-room"><span aria-hidden="true">+</span> Add room</button>
-        </div>
-        <div class="rail-group">
-          <button class="device-nav-item mqtt-nav-item" type="button" data-select-view="log">
-            <span class="device-nav-copy"><strong>Message log</strong></span>
-          </button>
         </div>
       </aside>
 
@@ -74,7 +68,7 @@
         <section class="config-section global-section" aria-labelledby="global-title">
           <div class="section-heading">
             <div><h2 id="global-title">BMS connection</h2></div>
-            <button class="button button-danger-quiet" type="button" data-action="delete-connection">Remove profile</button>
+            <button class="button button-danger-quiet" type="button" data-action="delete-connection">Remove</button>
           </div>
           <label class="field profile-name-field"><span>Connection name</span><input id="connection-name" type="text" autocomplete="off"></label>
           <div id="global-form" class="field-grid"></div>

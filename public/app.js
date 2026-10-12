@@ -3,7 +3,7 @@
   selectedDevice: null,
   selectedConnection: null,
   selectedRoom: null,
-  selectedView: "global",
+  selectedView: "mqtt",
   expandedDevices: {},
   expandedObjects: {},
   expandedAdvanced: {},
@@ -229,25 +229,22 @@ function renderGlobal() {
 function renderNavigation() {
   const entries = Object.entries(state.config.deviceList);
   const connections = Object.entries(state.config.connections);
-  $("#connection-count").textContent = `${connections.length} named ${connections.length === 1 ? "profile" : "profiles"}`;
   if (!connections.some(([name]) => name === state.selectedConnection)) state.selectedConnection = connections[0]?.[0] ?? null;
   if (!entries.some(([name]) => name === state.selectedDevice)) state.selectedDevice = entries[0]?.[0] ?? null;
-  $("[data-select-view='global']").classList.toggle("is-selected", state.selectedView === "global");
   $("[data-select-view='mqtt']").classList.toggle("is-selected", state.selectedView === "mqtt");
-  $("[data-select-view='log']").classList.toggle("is-selected", state.selectedView === "log");
+  $("#live-logs-button").classList.toggle("is-active", state.selectedView === "log");
   $("[data-select-view='schedule-global']").classList.toggle("is-selected", state.selectedView === "schedule-global");
   const rooms = state.config.roomsSchedules.rooms;
   state.selectedRoom = rooms.length ? Math.min(Math.max(state.selectedRoom ?? 0, 0), rooms.length - 1) : null;
   $("#room-navigation").innerHTML = rooms.map((room, index) => `
     <button class="device-nav-item${state.selectedView === "room" && index === state.selectedRoom ? " is-selected" : ""}" type="button" data-select-room="${index}">
-      <span class="device-nav-copy"><strong>${escapeHtml(room.scheduleName)}</strong><small>${Object.keys(room.devices || {}).length} device types · ${room.excluded ? "Excluded" : "Included"}</small></span>
+      <span class="device-nav-copy"><strong>${escapeHtml(room.scheduleName)}</strong></span>
       <span class="nav-status-dot ${room.excluded ? "is-excluded" : "is-included"}" title="${room.excluded ? "Excluded" : "Included"}" aria-hidden="true"></span>
       <span class="nav-chevron" aria-hidden="true">›</span>
     </button>`).join("");
   $("#connection-navigation").innerHTML = connections.map(([name]) => `
     <button class="device-nav-item connection-nav-item${state.selectedView === "global" && name === state.selectedConnection ? " is-selected" : ""}" type="button" data-select-connection="${escapeHtml(name)}">
-      <span class="device-glyph connection-glyph" aria-hidden="true">↔</span>
-      <span class="device-nav-copy"><strong>${escapeHtml(name)}</strong><small>${Object.values(state.config.deviceConnections).filter((assigned) => assigned === name).length} device types</small></span>
+      <span class="device-nav-copy"><strong>${escapeHtml(name)}</strong><small>Used by ${Object.values(state.config.deviceConnections).filter((assigned) => assigned === name).length} device types</small></span>
     </button>`).join("");
   $("#device-navigation").innerHTML = entries.map(([name, device]) => `
     <button class="device-nav-item${state.selectedView === "device" && name === state.selectedDevice ? " is-selected" : ""}" type="button" data-select-device="${escapeHtml(name)}">
@@ -298,7 +295,7 @@ function renderDevice() {
           <span class="mono-tag">${escapeHtml((device.lorawan.networkServer || "unassigned").toUpperCase())}</span>
           <span class="panel-summary-count">${Object.keys(objects).length} objects</span>
         </button>
-        <button class="button button-danger-quiet" type="button" data-action="delete-device">Remove type</button>
+        <button class="button button-danger-quiet" type="button" data-action="delete-device">Remove</button>
       </div>
       <div id="device-config-panel" class="device-card-body"${deviceExpanded ? "" : " hidden"}>
       <div class="field-grid">${deviceFields.join("")}</div>
@@ -520,7 +517,7 @@ function renderRoom() {
   container.innerHTML = `
     <div class="section-heading device-heading"><div><h2>Room</h2></div></div>
     <section class="config-section schedule-section${room.excluded ? " is-room-excluded" : ""}">
-      <div class="section-heading"><div><h2>Basic settings</h2></div>      <div class="heading-actions"><button class="button button-outline" type="button" data-action="toggle-room-excluded">${room.excluded ? "Include" : "Exclude"}</button><button class="button button-danger-quiet" type="button" data-action="delete-room">Remove room</button></div></div>
+      <div class="section-heading"><div><h2>Basic settings</h2></div>      <div class="heading-actions"><button class="button button-outline" type="button" data-action="toggle-room-excluded">${room.excluded ? "Include" : "Exclude"}</button><button class="button button-danger-quiet" type="button" data-action="delete-room">Remove</button></div></div>
       <div class="field-grid">
         <div class="field-row">${roomField(inputField("Room / schedule name", "scheduleName", room.scheduleName))}</div>
         <div class="field-row">${roomField(selectField("On which BMS will be BACnet schedule object?", "connectionName", room.connectionName || "", connectionOptions))}</div>
@@ -924,7 +921,10 @@ function setMqttStatus(status) {
   header.replaceChildren(dot, document.createTextNode(headerLabel));
   $("#mqtt-section-state").textContent = labels[connectionState] || connectionState;
   $("#mqtt-nav-status").textContent = labels[connectionState] || connectionState;
-  $("#mqtt-nav-dot").classList.toggle("is-connected", connectionState === "connected");
+  const navDot = $("#mqtt-nav-dot");
+  navDot.classList.toggle("is-connected", connectionState === "connected");
+  navDot.classList.toggle("is-connecting", connectionState === "connecting");
+  navDot.classList.toggle("is-disconnected", connectionState !== "connected" && connectionState !== "connecting");
   $("#mqtt-connect-button").disabled = connectionState === "connecting" || connectionState === "connected";
   $("#mqtt-disconnect-button").disabled = connectionState === "disconnected";
 }
