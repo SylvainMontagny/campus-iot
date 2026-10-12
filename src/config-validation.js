@@ -100,9 +100,14 @@ function validateConfig(config) {
         }
       }
 
-      if (OBJECT_TYPES.has(object.objectType) && object.assignementMode === "manual" && Number.isInteger(object.instanceNum)) {
+      if (OBJECT_TYPES.has(object.objectType) && Number.isInteger(object.instanceNum)) {
         const used = instanceNumbers[object.objectType];
-        if (used.has(object.instanceNum)) errors.push(issue("Manual instance number is already used for this object type", `${objectPath}.instanceNum`));
+        if (used.has(object.instanceNum)) {
+          const message = object.assignementMode === "manual"
+            ? "Manual instance number is already used for this object type"
+            : "Instance number offset is already used by another object of this type";
+          errors.push(issue(message, `${objectPath}.instanceNum`));
+        }
         used.add(object.instanceNum);
       }
     }

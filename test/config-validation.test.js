@@ -77,6 +77,34 @@ test("rejects an unknown downlink comparison target", () => {
   assert.ok(validateConfig(config).some((error) => error.path.endsWith("uplinkToCompareWith")));
 });
 
+test("rejects auto objects of the same type sharing an instance number offset", () => {
+  const config = createDefaultConfig();
+  config.deviceList.sensor = configuredDevice();
+  config.deviceList.sensor.bacnet.objects.humidity = {
+    objectType: "analogValue",
+    dataDirection: "uplink",
+    assignementMode: "auto",
+    instanceNum: 0,
+    lorawanPayloadName: "sensor.humidity"
+  };
+
+  assert.ok(validateConfig(config).some((error) => error.path === "deviceList.sensor.bacnet.objects.humidity.instanceNum"));
+});
+
+test("allows an analog value and a binary value to share the same instance number offset", () => {
+  const config = createDefaultConfig();
+  config.deviceList.sensor = configuredDevice();
+  config.deviceList.sensor.bacnet.objects.alarm = {
+    objectType: "binaryValue",
+    dataDirection: "uplink",
+    assignementMode: "auto",
+    instanceNum: 0,
+    lorawanPayloadName: "sensor.alarm"
+  };
+
+  assert.deepEqual(validateConfig(config), []);
+});
+
 test("rejects manual instances inside an automatic allocation range", () => {
   const config = createDefaultConfig();
   config.deviceList.sensor = configuredDevice();

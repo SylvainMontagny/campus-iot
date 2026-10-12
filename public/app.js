@@ -76,6 +76,16 @@ function makeObject() {
   };
 }
 
+// Smallest instance offset not yet used by another auto object of the same type.
+function nextInstanceOffset(device, objectType, excludeName) {
+  const used = new Set(Object.entries(device.bacnet.objects)
+    .filter(([name, o]) => name !== excludeName && o.objectType === objectType && o.assignementMode !== "manual")
+    .map(([, o]) => Number(o.instanceNum)));
+  let candidate = 0;
+  while (used.has(candidate)) candidate += 1;
+  return candidate;
+}
+
 function setPath(object, path, value) {
   const keys = path.split(".");
   const finalKey = keys.pop();
@@ -266,8 +276,8 @@ function renderDevice() {
     `<div class="field-row">${selectField("BMS connection", "deviceConnection", assignedConnection, connectionOptions).replace("data-path=", "data-device-connection=")}</div>`,
     `<div class="field-row">${inputField("Maximum number of this device", "identity.maxDevNum", device.identity?.maxDevNum, { type: "number", min: 1, step: 1 })}</div>`,
     `<div class="field-row">${selectField("Flush downlink queue", "lorawan.flushDownlinkQueue", String(Boolean(device.lorawan?.flushDownlinkQueue)), [["false", "No"], ["true", "Yes"]])}</div>`,
-    `<div class="field-pair">${inputField("First AV instance number", "bacnet.offsetAV", device.bacnet.offsetAV, { type: "number", min: 0, step: 1 })}${inputField("Number of AV for this device", "bacnet.instanceRangeAV", device.bacnet.instanceRangeAV, { type: "number", min: 0, step: 1 })}</div>`,
-    `<div class="field-pair">${inputField("First BV instance number", "bacnet.offsetBV", device.bacnet.offsetBV, { type: "number", min: 0, step: 1 })}${inputField("Number of BV for this device", "bacnet.instanceRangeBV", device.bacnet.instanceRangeBV, { type: "number", min: 0, step: 1 })}</div>`
+    `<div class="field-pair">${inputField("First AV instance number", "bacnet.offsetAV", device.bacnet.offsetAV, { type: "number", min: 0, step: 1 })}${inputField("Number of AV for each device", "bacnet.instanceRangeAV", device.bacnet.instanceRangeAV, { type: "number", min: 0, step: 1 })}</div>`,
+    `<div class="field-pair">${inputField("First BV instance number", "bacnet.offsetBV", device.bacnet.offsetBV, { type: "number", min: 0, step: 1 })}${inputField("Number of BV for each device", "bacnet.instanceRangeBV", device.bacnet.instanceRangeBV, { type: "number", min: 0, step: 1 })}</div>`
   ];
   let actilityFields = "";
   if (device.lorawan.networkServer === "actility" && hasDownlink(device)) {
@@ -357,8 +367,8 @@ const SCHEDULE_SETTINGS = [
   { key: "minimumSlotDuration", kind: "number", min: 0, label: "Minimum event duration (minutes)" },
   { key: "valueOccupied", kind: "number", label: "Value when the room is occupied", globalLabel: "Default value when the room is OCCUPIED" },
   { key: "valueUnOccupied", kind: "number", label: "Value when the room is unoccupied", globalLabel: "Default value when the room is UNOCCUPIED" },
-  { key: "timeOffsetBeforeStart", kind: "number", min: 0, groupedOnly: true, label: "End earlier by (minutes)" },
-  { key: "timeOffsetBeforeEnd", kind: "number", min: 0, groupedOnly: true, label: "Stop earlier by (minutes)" },
+  { key: "timeOffsetBeforeStart", kind: "number", min: 0, groupedOnly: true, label: "Start earlier by (minutes)" },
+  { key: "timeOffsetBeforeEnd", kind: "number", min: 0, groupedOnly: true, label: "End earlier by (minutes)" },
   { key: "nbrDaysPreview", kind: "number", min: 1, step: 1, label: "Number of days to anticipate", globalLabel: "Default number of days to anticipate" },
   { key: "addSuffixToAdeURL", kind: "boolean", label: "Add <today + days to anticipate> to the ADE URL" },
   { key: "weekly", kind: "json", label: "Weekly schedule", globalLabel: "Default weekly schedule" }
@@ -513,7 +523,7 @@ function renderRoom() {
       <div class="section-heading"><div><h2>Basic settings</h2></div>      <div class="heading-actions"><button class="button button-outline" type="button" data-action="toggle-room-excluded">${room.excluded ? "Include" : "Exclude"}</button><button class="button button-danger-quiet" type="button" data-action="delete-room">Remove room</button></div></div>
       <div class="field-grid">
         <div class="field-row">${roomField(inputField("Room / schedule name", "scheduleName", room.scheduleName))}</div>
-        <div class="field-row">${roomField(selectField("On which BACnet BMS will be the agenda", "connectionName", room.connectionName || "", connectionOptions))}</div>
+        <div class="field-row">${roomField(selectField("On which BMS will be BACnet schedule object?", "connectionName", room.connectionName || "", connectionOptions))}</div>
         <div class="field-row">${roomField(inputField("iCal URL", "url", room.url, { placeholder: "https://" }))}</div>
       </div>
       ${advancedPanel(`room:${state.selectedRoom}`, `<div class="field-grid">${scheduleSettingRows(SCHEDULE_ROWS, (key) => room[key] ?? defaults[key], "data-room-field", false, grouped)}</div>`)}
@@ -828,7 +838,37 @@ async function readZip(file) {
   return result;
 }
 
+// Each BACnet object of the same type (analog/binary value) must have a distinct instance number within its device type.
+function findDuplicateInstanceNumbers() {
+  const conflicts = [];
+  for (const [deviceName, device] of Object.entries(state.config.deviceList || {})) {
+    const byType = new Map();
+    for (const [objectName, object] of Object.entries(device.bacnet?.objects || {})) {
+      const key = object.objectType;
+      if (!byType.has(key)) byType.set(key, new Map());
+      const seen = byType.get(key);
+      const instanceNum = Number(object.instanceNum);
+      if (!seen.has(instanceNum)) seen.set(instanceNum, []);
+      seen.get(instanceNum).push(objectName);
+    }
+    for (const [objectType, seen] of byType) {
+      for (const [instanceNum, objectNames] of seen) {
+        if (objectNames.length > 1) {
+          const typeLabel = objectType === "binaryValue" ? "Binary value" : "Analog value";
+          conflicts.push(`${deviceName}: ${typeLabel} objects ${objectNames.join(", ")} share instance number ${instanceNum}.`);
+        }
+      }
+    }
+  }
+  return conflicts;
+}
+
 async function saveConfig() {
+  const conflicts = findDuplicateInstanceNumbers();
+  if (conflicts.length) {
+    showNotice(conflicts.join(" | "), "error");
+    return;
+  }
   syncAssignedConnections();
   const response = await fetch("/api/config", {
     method: "PUT",
@@ -1134,6 +1174,9 @@ document.addEventListener("change", (event) => {
       render();
       return;
     }
+    if (input.dataset.path === "objectType" && objectName && target.assignementMode !== "manual") {
+      target.instanceNum = nextInstanceOffset(device, value, objectName);
+    }
     if (["objectType", "assignementMode", "downlinkStrategy"].includes(input.dataset.path)) renderDevice();
   }
 });
@@ -1310,6 +1353,7 @@ document.addEventListener("click", async (event) => {
         while (Object.hasOwn(device.bacnet.objects, `${base}-${index}`)) index += 1;
         const objectName = `${base}-${index}`;
         device.bacnet.objects[objectName] = makeObject();
+        device.bacnet.objects[objectName].instanceNum = nextInstanceOffset(device, "analogValue", objectName);
         state.expandedObjects[`${state.selectedDevice}::${objectName}`] = true;
         break;
       }
