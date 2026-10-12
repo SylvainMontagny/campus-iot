@@ -94,7 +94,7 @@ function validateRoomsSchedules(data, { deviceList = {}, connections = {} } = {}
   else validateRoomSettings(conf.defaults, `${confPath}.defaults`, errors);
 
   if (rangeValid && data.rooms.length > max - min + 1) {
-    errors.push(issue("Too many rooms, increase the schedule instance range", "roomsSchedules.rooms"));
+    errors.push(issue("Too many rooms, increase the schedule instance range", "In ROOMS & SCHEDULES"));
   }
 
   const names = new Set();
@@ -152,7 +152,7 @@ function validateRoomsSchedules(data, { deviceList = {}, connections = {} } = {}
   });
 
   for (const [type, numbers] of Object.entries(usedNumbers)) {
-    if (new Set(numbers).size !== numbers.length) errors.push(issue(`${type}: a device number is used more than once`, "roomsSchedules.rooms"));
+    if (new Set(numbers).size !== numbers.length) errors.push(issue(`${type}: a device number is used more than once`, "In ROOMS & SCHEDULES"));
   }
   return errors;
 }

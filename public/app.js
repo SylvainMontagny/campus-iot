@@ -223,6 +223,7 @@ function renderGlobal() {
   if (global.protocol === "restAPIBacnet") {
     fields.push(`<div class="field-pair">${inputField("Login", "bacnetLogin", global.bacnetLogin)}${inputField("Password", "bacnetPassword", global.bacnetPassword, { secret: true })}</div>`);
   }
+  fields.push(`<div class="mqtt-actions"><button class="button button-primary" type="button" data-action="test-connection">Test</button></div>`);
   $("#global-form").innerHTML = fields.map((html) => html.replaceAll("data-path=", "data-connection-field=")).join("");
 }
 
@@ -238,7 +239,7 @@ function renderNavigation() {
   state.selectedRoom = rooms.length ? Math.min(Math.max(state.selectedRoom ?? 0, 0), rooms.length - 1) : null;
   $("#room-navigation").innerHTML = rooms.map((room, index) => `
     <button class="device-nav-item${state.selectedView === "room" && index === state.selectedRoom ? " is-selected" : ""}" type="button" data-select-room="${index}">
-      <span class="device-nav-copy"><strong>${escapeHtml(room.scheduleName)}</strong></span>
+      <span class="device-nav-copy"><strong>${escapeHtml(room.scheduleName)}</strong><small>Occ: ${escapeHtml(String(room.valueOccupied ?? state.config.roomsSchedules.icalToScheduleConf.defaults.valueOccupied))} · Unocc: ${escapeHtml(String(room.valueUnOccupied ?? state.config.roomsSchedules.icalToScheduleConf.defaults.valueUnOccupied))}</small></span>
       <span class="nav-status-dot ${room.excluded ? "is-excluded" : "is-included"}" title="${room.excluded ? "Excluded" : "Included"}" aria-hidden="true"></span>
       <span class="nav-chevron" aria-hidden="true">›</span>
     </button>`).join("");
@@ -517,7 +518,7 @@ function renderRoom() {
   container.innerHTML = `
     <div class="section-heading device-heading"><div><h2>Room</h2></div></div>
     <section class="config-section schedule-section${room.excluded ? " is-room-excluded" : ""}">
-      <div class="section-heading"><div><h2>Basic settings</h2></div>      <div class="heading-actions"><button class="button button-outline" type="button" data-action="toggle-room-excluded">${room.excluded ? "Include" : "Exclude"}</button><button class="button button-danger-quiet" type="button" data-action="delete-room">Remove</button></div></div>
+      <div class="section-heading"><div><h2>Basic settings</h2></div>      <div class="heading-actions"><button class="button button-outline button-small" type="button" data-action="reset-room-defaults">Set default</button><button class="button button-outline button-small" type="button" data-action="toggle-room-excluded">${room.excluded ? "Include" : "Exclude"}</button><button class="button button-danger-quiet button-small" type="button" data-action="delete-room">Remove</button></div></div>
       <div class="field-grid">
         <div class="field-row">${roomField(inputField("Room / schedule name", "scheduleName", room.scheduleName))}</div>
         <div class="field-row">${roomField(selectField("On which BMS will be BACnet schedule object?", "connectionName", room.connectionName || "", connectionOptions))}</div>
@@ -878,7 +879,7 @@ async function saveConfig() {
     return;
   }
   const mqttSaved = await saveMqttSettings();
-  showNotice(mqttSaved ? "Device list and MQTT connection saved to this server." : "Device list saved, but the MQTT connection could not be saved.", mqttSaved ? undefined : "error");
+  showNotice(mqttSaved ? "All configuration saved" : "Device list saved, but the MQTT connection could not be saved.", mqttSaved ? undefined : "error");
 }
 
 async function loadVersion() {
@@ -919,8 +920,11 @@ function setMqttStatus(status) {
   const dot = document.createElement("span");
   dot.className = `state-dot ${dotClass}`;
   header.replaceChildren(dot, document.createTextNode(headerLabel));
-  $("#mqtt-section-state").textContent = labels[connectionState] || connectionState;
-  $("#mqtt-nav-status").textContent = labels[connectionState] || connectionState;
+  const stateClass = connectionState === "connected" ? "is-connected" : connectionState === "connecting" ? "is-connecting" : "is-disconnected";
+  const sectionState = $("#mqtt-section-state");
+  sectionState.textContent = labels[connectionState] || connectionState;
+  sectionState.classList.remove("is-connected", "is-connecting", "is-disconnected");
+  sectionState.classList.add(stateClass);
   const navDot = $("#mqtt-nav-dot");
   navDot.classList.toggle("is-connected", connectionState === "connected");
   navDot.classList.toggle("is-connecting", connectionState === "connecting");
@@ -1294,6 +1298,20 @@ document.addEventListener("click", async (event) => {
         state.selectedView = "global";
         break;
       }
+      case "test-connection": {
+        const connection = state.config.connections[state.selectedConnection];
+        if (!connection) break;
+        showNotice("Testing BMS connection…", "success");
+        try {
+          const response = await fetch("/api/bms/test", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(connection) });
+          const result = await response.json();
+          if (!response.ok) throw new Error(result.error || "BMS connection test failed.");
+          showNotice(result.message, "success");
+        } catch (error) {
+          showNotice(error.message, "error");
+        }
+        break;
+      }
       case "delete-connection":
         if (state.selectedConnection && confirm(`Remove connection '${state.selectedConnection}'? Assigned devices will keep their current settings.`)) {
           const removedName = state.selectedConnection;
@@ -1314,6 +1332,14 @@ document.addEventListener("click", async (event) => {
         rooms.push({ scheduleName: `room-${index}`, connectionName: Object.keys(state.config.connections)[0] || "", url: "", excluded: false, devices: {} });
         state.selectedRoom = rooms.length - 1;
         state.selectedView = "room";
+        break;
+      }
+      case "reset-room-defaults": {
+        const room = state.config.roomsSchedules.rooms[state.selectedRoom];
+        if (!room) break;
+        // Rooms only store overrides; removing them makes the room inherit the global defaults.
+        for (const key of SCHEDULE_ROWS.flat()) delete room[key];
+        showNotice(`Room '${room.scheduleName}' now uses the global defaults.`);
         break;
       }
       case "toggle-room-excluded": {

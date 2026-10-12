@@ -7,6 +7,7 @@ const { createDefaultConfig } = require("./src/default-config");
 const { createMqttService } = require("./src/mqtt-service");
 const { createIcalScheduleService } = require("./src/ical-schedule");
 const { createDefaultRoomsSchedules, validateRoomsSchedules, resolveRooms } = require("./src/rooms-config");
+const { testBmsConnection } = require("./src/bms-test");
 const { version } = require("./package.json");
 
 const app = express();
@@ -284,6 +285,14 @@ app.post("/api/mqtt/connect", (request, response) => {
 
 app.post("/api/mqtt/disconnect", (_request, response) => {
   response.json(mqttService.disconnect());
+});
+
+app.post("/api/bms/test", async (request, response) => {
+  try {
+    response.json({ ok: true, message: await testBmsConnection(request.body) });
+  } catch (error) {
+    response.status(502).json({ ok: false, error: error.message });
+  }
 });
 
 app.get("/api/config", async (_request, response, next) => {

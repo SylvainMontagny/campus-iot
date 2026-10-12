@@ -95,6 +95,9 @@ button { cursor: pointer; }
 .schedule-section .advanced-card { margin-top: 18px; }
 .mqtt-section-index { color: #2f7552; background: #e3f0e5; font-size: 9px; }
 .mqtt-section-state { color: var(--muted); font-family: var(--mono); font-size: 11px; }
+.mqtt-section-state.is-connected { color: #2f8a4f; }
+.mqtt-section-state.is-connecting { color: #b8841c; }
+.mqtt-section-state.is-disconnected { color: #d93636; font-weight: 700; }
 .mqtt-fields { max-width: 760px; }
 .mqtt-auto { display: flex; align-items: center; gap: 6px; margin-left: 8px; font-size: 0.9rem; }
 .mqtt-actions { display: flex; align-items: center; gap: 8px; margin-top: 15px; padding-bottom: 20px; border-bottom: 1px solid var(--line); }
