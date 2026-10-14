@@ -32,26 +32,21 @@
     <main class="workspace">
       <aside class="rail" aria-label="Configuration navigation">
         <div class="rail-group">
-          <button class="device-nav-item mqtt-nav-item" type="button" data-select-view="mqtt">
-            <span class="device-nav-copy"><strong>MQTT connection</strong></span>
+          <button class="rail-title rail-title-mqtt" type="button" data-select-view="mqtt">
+            MQTT connection
             <span id="mqtt-nav-dot" class="nav-status-dot" aria-hidden="true"></span>
           </button>
         </div>
         <div class="rail-group">
-          <div class="rail-title rail-title-bms">BMS connections</div>
+          <button class="rail-title rail-title-bms" type="button" data-select-view="bms-home">BMS connections</button>
           <nav id="connection-navigation" class="device-navigation" aria-label="BMS connections"></nav>
-          <button class="add-device-button add-profile-button" type="button" data-action="add-connection"><span aria-hidden="true">+</span> Add BMS connection</button>
         </div>
         <div class="rail-group">
-          <div class="rail-title rail-title-lorawan">LoRaWAN to BACnet</div>
+          <button class="rail-title rail-title-lorawan" type="button" data-select-view="devices-home">LoRaWAN to BACnet</button>
           <nav id="device-navigation" class="device-navigation" aria-label="Device profiles"></nav>
-          <button id="add-device-button" class="add-device-button" type="button" data-action="add-device"><span aria-hidden="true">+</span> Add device profile</button>
         </div>
         <div class="rail-group">
-          <div class="rail-title rail-title-zones">Zones &amp; Schedules</div>
-          <button class="device-nav-item global-nav-item" type="button" data-select-view="schedule-global">
-            <span class="device-nav-copy"><strong>Global configuration</strong></span>
-          </button>
+          <button class="rail-title rail-title-zones" type="button" data-select-view="schedule-global">Zones &amp; Schedules</button>
           <nav id="zone-navigation" class="device-navigation" aria-label="Zones"></nav>
           <button class="add-device-button" type="button" data-action="add-zone"><span aria-hidden="true">+</span> Add zone</button>
         </div>
@@ -66,6 +61,7 @@
         </div>
 
         <div id="notice" class="notice" role="status" aria-live="polite" hidden></div>
+        <section id="category-page" class="config-section category-page" aria-live="polite" hidden></section>
         <section class="config-section global-section" aria-labelledby="global-title">
           <div class="section-heading">
             <div><h2 id="global-title">BMS connection</h2></div>

@@ -54,7 +54,11 @@ button { cursor: pointer; }
 .rail-group:first-child { padding-top: 0; border-top: 0; }
 .rail-group:last-child { padding-bottom: 0; }
 .eyebrow { color: #829188; font-family: var(--mono); font-size: 10px; letter-spacing: 0; }
-.rail-title { margin: 0 0 10px; padding: 9px 10px; border-radius: 3px; color: #34443b; background: #dceee3; font-size: 12px; font-weight: 800; letter-spacing: .025em; text-align: center; text-transform: uppercase; }
+.rail-title { width: 100%; margin: 0 0 10px; padding: 9px 10px; border: 1px solid transparent; border-radius: 3px; color: #34443b; background: #dceee3; font-size: 12px; font-weight: 800; letter-spacing: .025em; text-align: center; text-transform: uppercase; }
+.rail-title:hover, .rail-title.is-selected { background: #cce3d4; }
+.rail-title:focus-visible { outline: 2px solid var(--forest); outline-offset: 2px; }
+.rail-title-mqtt { position: relative; }
+.rail-title-mqtt .nav-status-dot { position: absolute; top: 50%; right: 10px; transform: translateY(-50%); }
 .device-navigation { display: grid; gap: 5px; }
 .mqtt-log-tools { display: flex; align-items: center; gap: 10px; }
 .mqtt-glyph { color: #366a58; background: #d6e8db; font-weight: 500; }
@@ -84,6 +88,15 @@ button { cursor: pointer; }
 .add-device-button:hover { color: #276c59; }
 
 .content { width: 100%; max-width: 1170px; margin: 0 auto; padding: 36px clamp(22px, 4vw, 60px) 28px; }
+.category-page[hidden] { display: none; }
+.category-page { padding: 19px 21px 21px; border-top: 3px solid var(--forest); }
+.category-list { display: grid; gap: 7px; }
+.category-list-item { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 13px; color: var(--ink); background: #fff; border: 1px solid var(--line); border-radius: 3px; text-align: left; }
+.category-list-copy { min-width: 0; display: grid; gap: 4px; }
+.category-list-copy strong { font-size: 13px; }
+.category-list-copy small { overflow-wrap: anywhere; color: var(--muted); font-size: 11px; }
+.category-list-item:hover { background: #f1f4ef; border-color: #b8c8be; }
+.category-add { margin: 15px 0 0; }
 .page-heading { display: flex; justify-content: space-between; align-items: end; gap: 18px; margin-bottom: 27px; }
 .page-heading h1 { margin: 7px 0 5px; font-size: 26px; line-height: 1.2; letter-spacing: 0; }
 .page-heading p { margin: 0; color: var(--muted); font-size: 13px; }

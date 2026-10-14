@@ -232,9 +232,15 @@ function renderNavigation() {
   const connections = Object.entries(state.config.connections);
   if (!connections.some(([name]) => name === state.selectedConnection)) state.selectedConnection = connections[0]?.[0] ?? null;
   if (!entries.some(([name]) => name === state.selectedDevice)) state.selectedDevice = entries[0]?.[0] ?? null;
+  for (const [view, selector] of [
+    ["bms-home", ".rail-title-bms"],
+    ["devices-home", ".rail-title-lorawan"]
+  ]) {
+    $(selector).classList.toggle("is-selected", state.selectedView === view);
+  }
+  $(".rail-title-zones").classList.toggle("is-selected", state.selectedView === "schedule-global");
   $("[data-select-view='mqtt']").classList.toggle("is-selected", state.selectedView === "mqtt");
   $("#live-logs-button").classList.toggle("is-active", state.selectedView === "log");
-  $("[data-select-view='schedule-global']").classList.toggle("is-selected", state.selectedView === "schedule-global");
   const zones = state.config.zonesSchedules.zones;
   state.selectedZone = zones.length ? Math.min(Math.max(state.selectedZone ?? 0, 0), zones.length - 1) : null;
   $("#zone-navigation").innerHTML = zones.map((zone, index) => `
@@ -252,6 +258,49 @@ function renderNavigation() {
       <span class="device-nav-copy"><strong>${escapeHtml(name)}</strong><small>${Object.keys(device.bacnet?.objects || {}).length} BACnet objects</small></span>
       <span class="nav-chevron" aria-hidden="true">›</span>
     </button>`).join("");
+}
+
+function renderCategoryPage() {
+  const container = $("#category-page");
+  const lists = {
+    "bms-home": {
+      title: "BMS connections",
+      items: Object.entries(state.config.connections).map(([name, connection]) => `
+        <button class="category-list-item" type="button" data-select-connection="${escapeHtml(name)}">
+          <span class="category-list-copy">
+            <strong>${escapeHtml(name)}</strong>
+            <small>BMS IP address: ${escapeHtml(connection.ipAddress || "Not set")}</small>
+            <small>LoRaWAN Network server: ${escapeHtml({ tts: "The Things Stack", chirpstack: "ChirpStack", actility: "Actility" }[connection.networkServer] || connection.networkServer || "Not set")}</small>
+            <small>BMS protocol: ${escapeHtml({ bacnet: "BACnet", restAPIBacnet: "REST API BACnet" }[connection.protocol] || connection.protocol || "Not set")}</small>
+          </span><span class="nav-chevron" aria-hidden="true">›</span>
+        </button>`),
+      empty: "No BMS connections yet.",
+      addAction: "add-connection",
+      addLabel: "Add BMS connection"
+    },
+    "devices-home": {
+      title: "Device profiles",
+      items: Object.entries(state.config.deviceProfiles).map(([name, device]) => `
+        <button class="category-list-item" type="button" data-select-device="${escapeHtml(name)}">
+          <span class="category-list-copy">
+            <strong>${escapeHtml(name)}</strong>
+            <small>BMS connection: ${escapeHtml(state.config.deviceConnections[name] || device.controller?.connectionName || "None")}</small>
+            <small>LoRaWAN class: ${escapeHtml(device.lorawan?.class ? `Class ${device.lorawan.class}` : "Not set")}</small>
+          </span><span class="nav-chevron" aria-hidden="true">›</span>
+        </button>`),
+      empty: "No device profiles yet.",
+      addAction: "add-device",
+      addLabel: "Add device profile"
+    }
+  };
+  const page = lists[state.selectedView];
+  container.hidden = !page;
+  if (!page) return;
+
+  container.innerHTML = `
+    <div class="section-heading"><div><h2>${page.title}</h2></div></div>
+    <div class="category-list">${page.items.join("") || `<div class="empty-objects">${page.empty}</div>`}</div>
+    ${page.addAction ? `<button class="add-device-button category-add" type="button" data-action="${page.addAction}"><span aria-hidden="true">+</span> ${page.addLabel}</button>` : ""}`;
 }
 
 function renderDevice() {
@@ -302,8 +351,8 @@ function renderDevice() {
       </div>
       <div id="device-config-panel" class="device-card-body"${deviceExpanded ? "" : " hidden"}>
       <div class="field-grid">${deviceFields.join("")}</div>
-      <div class="subsection-heading debug-heading"><div><h3>Print debug events</h3></div></div>
-      <div class="check-grid">${checkbox("All events", debug.includes("all"), "all")}${checkbox("Uplink events", debug.includes("up"), "up")}${checkbox("Downlink events", debug.includes("down"), "down")}${checkbox("Creation events", debug.includes("creation"), "creation")}${checkbox("Transmit time", debug.includes("txTime"), "txTime")}</div>
+      <div class="subsection-heading debug-heading"><div><h3>Message logs</h3></div></div>
+      <div class="check-grid">${checkbox("All", debug.includes("all"), "all")}${checkbox("Uplink", debug.includes("up"), "up")}${checkbox("Downlink", debug.includes("down"), "down")}${checkbox("Creation", debug.includes("creation"), "creation")}${checkbox("Transmit time", debug.includes("txTime"), "txTime")}</div>
       <div class="subsection-heading debug-heading"><div><h3>Print device object</h3></div></div>
       <div class="check-grid">${checkbox("After MQTT reception", debug.includes("deviceMqtt"), "deviceMqtt")}${checkbox("After uplink process", debug.includes("deviceUplink"), "deviceUplink")}${checkbox("After downlink process", debug.includes("deviceDownlink"), "deviceDownlink")}</div>
       <div class="subsection-heading debug-heading"><div><h3>Print previousValues object</h3></div></div>
@@ -402,8 +451,8 @@ const SCHEDULE_ROWS = [
 ];
 
 const SCHEDULE_LOGS = [
-  ["eventsAddedInSchedules", "Event added in schedules"],
-  ["eventTimeCreation", "Event time creation"],
+  ["eventsAddedInSchedules", "ical Event added in schedules"],
+  ["eventTimeCreation", "ical Event time creation"],
   ["scheduleAVUpdate", "Schedule AV update"]
 ];
 
@@ -472,7 +521,7 @@ function renderScheduleGlobal() {
       ${scheduleSettingRows([OCCUPANCY_ROW, OFFSET_ROW], valueOf, "data-schedule-default", true, grouped)}
       <div class="field-row">${confField("Schedule update interval (seconds)", "timeBetweenScheduleUpdate", conf.timeBetweenScheduleUpdate, { min: 1 })}</div>
     </div>
-    <div class="subsection-heading debug-heading"><div><h3>Message log</h3></div></div>
+    <div class="subsection-heading debug-heading"><div><h3>Message logs</h3></div></div>
     <div class="check-grid">${SCHEDULE_LOGS.map(([key, label]) => `<label class="check-field"><input type="checkbox" data-schedule-log="${key}"${conf.logs[key] !== false ? " checked" : ""}><span>${escapeHtml(label)}</span></label>`).join("")}</div>
     ${advancedPanel("global", advanced)}`;
 }
@@ -591,6 +640,7 @@ function render() {
   renderDevice();
   renderScheduleGlobal();
   renderZone();
+  renderCategoryPage();
   const view = state.selectedView;
   $(".global-section").hidden = view !== "global";
   $("#device-editor").hidden = view !== "device";
@@ -599,9 +649,11 @@ function render() {
   $("#mqtt-section").hidden = view !== "mqtt";
   $("#log-section").hidden = view !== "log";
   const pages = {
+    "bms-home": ["BMS connections", "Manage named connections for your building management systems."],
+    "devices-home": ["LoRaWAN to BACnet", "Manage device profiles and their BACnet mappings."],
     global: [state.selectedConnection || "BMS connections"],
     mqtt: ["MQTT connection"],
-    log: ["Message log", ""],
+    log: ["Message logs", ""],
     "schedule-global": ["Zones & Schedules", "Global configuration"],
     zone: [state.config.zonesSchedules.zones[state.selectedZone]?.scheduleName || "Zones & Schedules", "Specific configuration for this zone "],
     device: ["LoRaWAN to BACnet configuration"]
@@ -1286,6 +1338,7 @@ document.addEventListener("click", async (event) => {
   const actionButton = event.target.closest("[data-action]");
   if (actionButton) {
     const device = state.config.deviceProfiles[state.selectedDevice];
+    const stayOnCategoryPage = actionButton.classList.contains("category-add");
     switch (actionButton.dataset.action) {
       case "add-device": {
         const base = "loraDevice";
@@ -1297,7 +1350,7 @@ document.addEventListener("click", async (event) => {
         state.config.deviceProfiles[name] = makeDevice(name, connectionName);
         state.expandedDevices[name] = true;
         state.selectedDevice = name;
-        state.selectedView = "device";
+        if (!stayOnCategoryPage) state.selectedView = "device";
         break;
       }
       case "delete-device":
@@ -1317,7 +1370,7 @@ document.addEventListener("click", async (event) => {
         const connectionName = `Connection ${index}`;
         state.config.connections[connectionName] = defaultConnection();
         state.selectedConnection = connectionName;
-        state.selectedView = "global";
+        if (!stayOnCategoryPage) state.selectedView = "global";
         break;
       }
       case "test-connection": {
