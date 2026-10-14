@@ -6,7 +6,7 @@ const { validateConfig } = require("./src/config-validation");
 const { createDefaultConfig } = require("./src/default-config");
 const { createMqttService } = require("./src/mqtt-service");
 const { createIcalScheduleService } = require("./src/ical-schedule");
-const { createDefaultRoomsSchedules, validateRoomsSchedules, resolveRooms } = require("./src/rooms-config");
+const { createDefaultRoomsSchedules, validateRoomsSchedules, resolveRooms, findDuplicateIcalUrls } = require("./src/rooms-config");
 const { testBmsConnection } = require("./src/bms-test");
 const { testIcalUrl } = require("./src/ical-test");
 const { version } = require("./package.json");
@@ -362,13 +362,14 @@ app.put("/api/config", async (request, response, next) => {
         mqttService.clearPreviousValues(deviceProfile);
       }
     }
+    const warnings = roomsSchedules === undefined ? [] : findDuplicateIcalUrls(roomsSchedules.rooms);
     if (roomsSchedules !== undefined) {
-      await writeRoomsSchedules(roomsSchedules);
+      await writeRoomsSchedules(roomsSchedules);(roomsSchedules);
       const rooms = resolveRooms(roomsSchedules);
       mqttService.log("output", `Rooms & Schedules saved.\nrooms = ${JSON.stringify(rooms, null, 2)}\nicalToScheduleConf = ${JSON.stringify(roomsSchedules.icalToScheduleConf, null, 2)}`);
       startRoomsSchedules(roomsSchedules, config);
     }
-    response.json({ saved: true });
+    response.json({ saved: true, warnings });
   } catch (error) {
     next(error);
   }

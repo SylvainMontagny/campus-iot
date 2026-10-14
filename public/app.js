@@ -239,7 +239,7 @@ function renderNavigation() {
   state.selectedRoom = rooms.length ? Math.min(Math.max(state.selectedRoom ?? 0, 0), rooms.length - 1) : null;
   $("#room-navigation").innerHTML = rooms.map((room, index) => `
     <button class="device-nav-item${state.selectedView === "room" && index === state.selectedRoom ? " is-selected" : ""}" type="button" data-select-room="${index}">
-      <span class="device-nav-copy"><strong>${escapeHtml(room.scheduleName)}</strong><small>Occ: ${escapeHtml(String(room.valueOccupied ?? state.config.roomsSchedules.icalToScheduleConf.defaults.valueOccupied))} · Unocc: ${escapeHtml(String(room.valueUnOccupied ?? state.config.roomsSchedules.icalToScheduleConf.defaults.valueUnOccupied))}</small></span>
+      <span class="device-nav-copy"><strong>${escapeHtml(room.scheduleName)}${SCHEDULE_ROWS.flat().every((key) => room[key] === undefined) ? ' <small class="room-default-tag">Default config</small>' : ""}</strong><small>Occ: ${escapeHtml(String(room.valueOccupied ?? state.config.roomsSchedules.icalToScheduleConf.defaults.valueOccupied))} · Unocc: ${escapeHtml(String(room.valueUnOccupied ?? state.config.roomsSchedules.icalToScheduleConf.defaults.valueUnOccupied))}</small></span>
       <span class="nav-status-dot ${room.excluded ? "is-excluded" : "is-included"}" title="${room.excluded ? "Excluded" : "Included"}" aria-hidden="true"></span>
       <span class="nav-chevron" aria-hidden="true">›</span>
     </button>`).join("");
@@ -901,6 +901,7 @@ async function saveConfig() {
   }
   const mqttSaved = await saveMqttSettings();
   showNotice(mqttSaved ? "All configuration saved" : "Device profiles saved, but the MQTT connection could not be saved.", mqttSaved ? undefined : "error");
+  if (result.warnings?.length) showNotice(`${mqttSaved ? "All configuration saved" : "Saved"} with warning:\n${result.warnings.join("\n")}`, "warning");
 }
 
 async function loadVersion() {

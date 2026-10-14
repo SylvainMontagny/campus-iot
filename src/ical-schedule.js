@@ -91,13 +91,14 @@ function buildSpecialEvents(room, rawEvents, warn = () => {}) {
     for (const event of events) {
       const key = tzParts(event.start, tz).dateKey;
       const current = byDay.get(key);
-      if (!current) byDay.set(key, { ...event, summary: "Merged Events" });
+      if (!current) byDay.set(key, { ...event, summaries: [event.summary] });
       else {
+        current.summaries.push(event.summary);
         if (event.start < current.start) current.start = event.start;
         if (event.end > current.end) current.end = event.end;
       }
     }
-    events = [...byDay.values()];
+    events = [...byDay.values()].map(({ summaries, ...event }) => ({ ...event, summary: summaries.join(", ") }));
   }
 
   const special = {};

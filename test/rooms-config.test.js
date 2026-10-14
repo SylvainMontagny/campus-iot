@@ -1,6 +1,6 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { createDefaultRoomsSchedules, validateRoomsSchedules, resolveRooms, applyAdeUrlSuffix } = require("../src/rooms-config");
+const { createDefaultRoomsSchedules, validateRoomsSchedules, resolveRooms, applyAdeUrlSuffix, findDuplicateIcalUrls } = require("../src/rooms-config");
 const { buildSpecialEvents } = require("../src/ical-schedule");
 
 const deviceProfiles = {
@@ -74,6 +74,16 @@ test("resolveRooms applies the ADE suffix from the defaults", () => {
   assert.match(room.url, /^https:\/\/x\/a\?b=1&lastDate=\d{4}-\d{2}-\d{2}$/);
 });
 
+test("rooms sharing an iCal URL are reported by name", () => {
+  const rooms = [
+    { scheduleName: "A", url: "https://x/a.ics" },
+    { scheduleName: "B", url: " https://x/a.ics" },
+    { scheduleName: "C", url: "https://x/c.ics" }
+  ];
+  assert.deepEqual(findDuplicateIcalUrls(rooms), ["Rooms A, B use the same iCal URL: https://x/a.ics"]);
+  assert.deepEqual(findDuplicateIcalUrls(rooms.slice(1)), []);
+});
+
 test("grouped events are merged per day with the configured offsets", () => {
   const room = { ...resolveRooms(makeData())[0], groupEvents: true, timeOffsetBeforeStart: 60, timeOffsetBeforeEnd: 30, eventsToDiscard: ["SKIP"] };
   const events = [
@@ -83,7 +93,7 @@ test("grouped events are merged per day with the configured offsets", () => {
   ];
   const special = buildSpecialEvents(room, events);
   assert.equal(Object.keys(special).length, 1);
-  assert.equal(special[1].name, "Merged Events");
+  assert.equal(special[1].name, "A, B");
   assert.equal(special[1].transitions[1].time, "09:00:00"); // 10:00 Paris - 1 h
   assert.equal(special[1].transitions[2].time, "15:30:00"); // 16:00 Paris - 30 min
   assert.equal(special[1].transitions[1].value, 19);

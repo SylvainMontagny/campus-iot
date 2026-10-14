@@ -77,6 +77,7 @@ button { cursor: pointer; }
 .device-nav-copy strong, .device-nav-copy small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .device-nav-copy strong { font-size: 12px; }
 .device-nav-copy small { margin-top: 3px; color: var(--muted); font-size: 10px; }
+.device-nav-copy .room-default-tag { display: inline; margin: 0 0 0 4px; font-weight: 400; font-style: italic; }
 .nav-chevron { color: #87968d; font-size: 21px; }
 .add-device-button { display: flex; align-items: center; gap: 8px; margin: 13px 4px; padding: 8px 5px; color: var(--forest); background: none; border: 0; text-align: left; font-size: 12px; font-weight: 700; }
 .add-device-button span { font-size: 19px; font-weight: 400; }
@@ -211,6 +212,7 @@ button { cursor: pointer; }
 .notice-close { flex: 0 0 auto; margin: -4px -5px -4px 0; padding: 0 4px; border: 0; color: inherit; background: transparent; font-size: 18px; line-height: 1; }
 .notice-close:hover { opacity: .65; }
 .notice-error { color: #8d3928; background: #f8e9e3; border-color: #cb6849; }
+.notice-warning { color: #7a5a12; background: #fbf3d9; border-color: #d9a82b; }
 .json-dialog { width: min(800px, calc(100vw - 24px)); max-width: none; padding: 0; border: 1px solid #cbd7cd; border-radius: 4px; box-shadow: 0 18px 70px rgb(19 39 30 / 24%); }
 .json-dialog::backdrop { background: rgb(15 29 23 / 56%); }
 .dialog-form { padding: 20px; }

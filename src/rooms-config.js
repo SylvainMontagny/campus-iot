@@ -180,4 +180,16 @@ function applyAdeUrlSuffix(room, now = new Date()) {
     : `${room.url}&lastDate=${suffix}`;
 }
 
-module.exports = { createDefaultRoomsSchedules, validateRoomsSchedules, resolveRooms, applyAdeUrlSuffix };
+// Non-blocking check: returns one warning per iCal URL shared by several rooms.
+function findDuplicateIcalUrls(rooms) {
+  const byUrl = new Map();
+  for (const room of rooms) {
+    const url = typeof room?.url === "string" ? room.url.trim() : "";
+    if (!url) continue;
+    byUrl.set(url, (byUrl.get(url) || []).concat(room.scheduleName));
+  }
+  return [...byUrl].filter(([, names]) => names.length > 1)
+    .map(([url, names]) => `Rooms ${names.join(", ")} use the same iCal URL: ${url}`);
+}
+
+module.exports = { createDefaultRoomsSchedules, validateRoomsSchedules, resolveRooms, applyAdeUrlSuffix, findDuplicateIcalUrls };
