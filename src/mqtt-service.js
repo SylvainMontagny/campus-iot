@@ -88,7 +88,7 @@ function mapIncomingPacket(topic, rawPayload, deviceList) {
   }
   if (!deviceList[deviceType]) {
     return {
-      error: `Error: Device Type does not belong to the Device List (${deviceName})`,
+      error: `Error: Device Type does not belong to the "LoRaWAN to BACnet" List (${deviceName})`,
       details: { errorType: "deviceName", value: deviceName }
     };
   }
@@ -131,6 +131,11 @@ function mapIncomingPacket(topic, rawPayload, deviceList) {
     if (object.dataDirection === "uplink") {
       const keys = String(object.lorawanPayloadName || "").split(/[.\[\]]/).filter((key) => key !== "");
       object.value = keys.reduce((value, key) => value?.[key], devicePayload);
+    }
+    if (object.value === undefined && object.dataDirection === "uplink") {
+      return {
+        error: `Device : ${device.identity.deviceName} - Object : ${objectName} - ${object.lorawanPayloadName} doesn't exist in the received LoRaWAN payload.`
+      };
     }
     if (object.value === undefined || typeof object.value === "object") {
       return { error: `Device : ${device.identity.deviceName} - Object : ${objectName} - Wrong Payload decoder or Wrong Device description` };

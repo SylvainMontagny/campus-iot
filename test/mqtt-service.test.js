@@ -90,7 +90,7 @@ test("rejects a payload from a network server other than the configured one", ()
   assert.equal(result.error, "Error: Network server mismatch (sensor-1): payload comes from 'chirpstack' but device type 'sensor' is configured for 'tts'");
 });
 
-test("preserves the legacy error messages for device and payload failures", () => {
+test("reports device and payload failures", () => {
   const payload = (deviceId, decodedPayload = { decoded: { temperature: 1 } }) => ({
     end_device_ids: { device_id: deviceId },
     uplink_message: { decoded_payload: decodedPayload }
@@ -102,14 +102,15 @@ test("preserves the legacy error messages for device and payload failures", () =
   assert.equal(mapIncomingPacket("topic/up", payload("sensor-0"), deviceList).error,
     "Error: Device Num is 0 is not allowed (sensor-0)");
   assert.equal(mapIncomingPacket("topic/up", payload("unknown-1"), deviceList).error,
-    "Error: Device Type does not belong to the Device List (unknown-1)");
+    'Error: Device Type does not belong to the "LoRaWAN to BACnet" List (unknown-1)');
   assert.equal(mapIncomingPacket("topic/up", payload("sensor-5"), deviceList).error,
     "Error: Device number is too high (sensor-5)");
   assert.equal(mapIncomingPacket("topic/up", {
     end_device_ids: { device_id: "sensor-1" }, uplink_message: {}
   }, deviceList).error, "sensor-1 : No payload decoder configured on the Network Server");
+  deviceList.sensor.bacnet.objects.temperature.lorawanPayloadName = "decoded.temperaturee";
   assert.equal(mapIncomingPacket("topic/up", payload("sensor-1", {}), deviceList).error,
-    "Device : sensor-1 - Object : temperature - Wrong Payload decoder or Wrong Device description");
+    "Device : sensor-1 - Object : temperature - decoded.temperaturee doesn't exist in the received LoRaWAN payload.");
 
   const unknownObjectType = makeDeviceList();
   unknownObjectType.sensor.bacnet.objects.temperature.objectType = "unsupported";
