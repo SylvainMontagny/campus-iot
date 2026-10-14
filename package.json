@@ -1,6 +1,6 @@
 {
   "name": "campus-iot",
-  "version": "1.0.0",
+  "version": "1.3.0",
   "private": true,
   "description": "Web-based platform to control LoRaWAN device and agenda with a BACnet controller.",
   "main": "server.js",

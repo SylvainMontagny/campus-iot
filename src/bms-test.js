@@ -4,6 +4,7 @@ const https = require("node:https");
 const TEST_TIMEOUT_MS = 2000;
 const BACNET_PORT = 47808;
 const DISTECH_BASE = "/api/rest/v2";
+const { getClient } = require("./bacnet-native");
 
 const httpClient = axios.create({
   httpsAgent: new https.Agent({ rejectUnauthorized: false }),
@@ -39,8 +40,10 @@ async function testRestApiBacnet(connection, { client = httpClient, timeout = TE
 
 // A BACnet error or abort is still an answer from the device; only silence is a failure.
 async function testBacnet(connection, { createClient, timeout = TEST_TIMEOUT_MS } = {}) {
-  const { default: Bacnet, ObjectType, PropertyIdentifier } = require("@bacnet-js/client");
-  const client = createClient ? await createClient() : new Bacnet({ apduTimeout: timeout });
+  const { ObjectType, PropertyIdentifier } = require("@bacnet-js/client");
+  // The shared client owns UDP 47808: a second client could not receive the BMS replies.
+  const client = createClient ? await createClient() : getClient(timeout);
+  const ownsClient = Boolean(createClient);
   client.on?.("error", () => {});
   let timer;
   try {
@@ -54,11 +57,13 @@ async function testBacnet(connection, { createClient, timeout = TEST_TIMEOUT_MS 
     return "BMS connected (BACnet)";
   } catch (error) {
     const message = error?.message || String(error);
-    if (/^Bacnet(Error|Abort)/.test(message)) return `BMS connected`;
+    if (/^Bacnet(Error|Abort)/.test(message)) return `BMS connected  (BACnet)`;
     throw new Error(`Cannot reach the BMS: ${message === "ERR_TIMEOUT" ? "timeout" : message}`);
   } finally {
     clearTimeout(timer);
-    try { client.close(); } catch { /* already closed */ }
+    if (ownsClient) {
+      try { client.close(); } catch { /* already closed */ }
+    }
   }
 }
 
