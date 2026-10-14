@@ -127,4 +127,4 @@ async function processBacnet(device, { client, timeout = DEFAULT_TIMEOUT_MS, log
   return { handled: true, ok: true };
 }
 
-module.exports = { processBacnet };
+module.exports = { processBacnet, getClient, describeError };

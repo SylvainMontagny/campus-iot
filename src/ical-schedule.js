@@ -1,7 +1,8 @@
 const axios = require("axios");
 const https = require("node:https");
 const ical = require("node-ical");
-const { validateZonesSchedules, resolveZones } = require("./zones-config");
+const { validateZonesSchedules, resolveZones, SCHEDULE_EVENTS } = require("./zones-config");
+const { createNativeScheduleDriver } = require("./bacnet-schedule");
 
 // unref so a pending wait never keeps the process alive.
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms).unref());
@@ -241,23 +242,18 @@ function createIcalScheduleService({ log = () => {} } = {}) {
     await batch(api, requests);
   }
 
-  async function updateZoneSchedule(api, zone) {
+  async function updateZoneSchedule(driver, zone) {
     const special = buildSpecialEvents(zone, await fetchEvents(zone), (message) => log("warning", message));
-    await api.post(`/services/bacnet/local/objects/schedules/${zone.scheduleID}`, {
-      "special-events": special,
-      "weekly-schedule": zone.weekly,
-      "object-name": zone.scheduleName,
-      "schedule-default": zone.valueUnOccupied
-    });
+    await driver.updateZoneSchedule(zone, special);
   }
 
-  async function updateAllSchedules(api, zones, label, active, conf) {
-    if (logEnabled(conf, "eventsAddedInSchedules")) log("info", `${label}: creating events for ${zones.length} zones...`);
+  async function updateAllSchedules(driver, zones, label, active, conf) {
+    if (logEnabled(conf, "eventsAddedInSchedules")) log("info", `${label}: creating events for ${zones.length} zones (${zones.map((zone) => zone.scheduleName).join(", ")})...`);
     const startedAt = Date.now();
     for (const zone of zones) {
       if (!active()) return;
       try {
-        await updateZoneSchedule(api, zone);
+        await updateZoneSchedule(driver, zone);
       } catch (error) {
         // Skip the zone on iCal/HTTP error.
         log("error", `Error for zone ${zone.scheduleName}: ${error.message}`);
@@ -310,11 +306,33 @@ function createIcalScheduleService({ log = () => {} } = {}) {
     })();
   }
 
+  function createRestDriver(api) {
+    return {
+      setupSchedules: (zones, conf) => setupSchedules(api, zones, conf),
+      setupScheduleAV: (zones, conf) => setupScheduleAV(api, zones, conf),
+      setupBindings: (zones, conf, deviceProfiles) => setupBindings(api, zones, conf, deviceProfiles),
+      updateScheduleAV: (zones, conf, label) => updateScheduleAV(api, zones, conf, label),
+      updateZoneSchedule: (zone, special) => api.post(`/services/bacnet/local/objects/schedules/${zone.scheduleID}`, {
+        "special-events": special,
+        "weekly-schedule": zone.weekly,
+        "object-name": zone.scheduleName,
+        "schedule-default": zone.valueUnOccupied
+      })
+    };
+  }
+
+  // The BMS protocol of the connection decides how every BMS action is carried out.
+  function createDriver(connection) {
+    return connection.protocol === "bacnet"
+      ? createNativeScheduleDriver(connection, { log })
+      : createRestDriver(createApi(connection));
+  }
+
   /** Stops any running loops, then starts the schedule synchronisation for the given configuration. */
-  async function start({ icalToScheduleConf: conf, zones: configuredZones, deviceProfiles, connections }) {
+  async function start({ icalToScheduleConf: conf, scheduleEventsConf, zones: configuredZones, deviceProfiles, connections }) {
     const run = ++generation;
     const active = () => run === generation;
-    const data = { icalToScheduleConf: conf, zones: configuredZones };
+    const data = { icalToScheduleConf: conf, scheduleEventsConf, zones: configuredZones };
 
     const errors = validateZonesSchedules(data, { deviceProfiles, connections });
     if (errors.length) {
@@ -323,34 +341,52 @@ function createIcalScheduleService({ log = () => {} } = {}) {
     }
     if (!configuredZones.length) return;
 
-    const zones = resolveZones(data);
+    // Groups are per BMS connection and per configuration.
     const groups = new Map();
-    for (const zone of zones) {
-      if (!groups.has(zone.connectionName)) groups.set(zone.connectionName, { zones: [], api: createApi(connections[zone.connectionName]) });
-      groups.get(zone.connectionName).zones.push(zone);
+    for (const zone of resolveZones(data)) {
+      const eventsOnly = zone.configuration === SCHEDULE_EVENTS;
+      const key = `${eventsOnly ? "events" : "ical"}|${zone.connectionName}`;
+      if (!groups.has(key)) {
+        groups.set(key, {
+          name: zone.connectionName, eventsOnly, zones: [],
+          conf: eventsOnly ? data.scheduleEventsConf : conf,
+          driver: createDriver(connections[zone.connectionName])
+        });
+      }
+      groups.get(key).zones.push(zone);
     }
 
     try {
-      for (const [name, group] of groups) {
+      for (const group of groups.values()) {
         if (!active()) return;
-        log("info", `${name}: creating ${group.zones.length} schedules, scheduleAV and bindings...`);
-        await setupSchedules(group.api, group.zones, conf);
-        await setupScheduleAV(group.api, group.zones, conf);
-        await setupBindings(group.api, group.zones, conf, deviceProfiles);
+        // Zones adding events to existing BACnet schedules need no schedule, scheduleAV or binding setup.
+        if (group.eventsOnly) continue;
+        log("info", `${group.name}: creating ${group.zones.length} schedules, scheduleAV and bindings...`);
+        await group.driver.setupSchedules(group.zones, group.conf);
+        await group.driver.setupScheduleAV(group.zones, group.conf);
+        await group.driver.setupBindings(group.zones, group.conf, deviceProfiles);
       }
     } catch (error) {
       log("error", `Zones & Schedules startup failed: ${error.message}`);
       return;
     }
 
-    log("info", `Ical events will be updated every ${formatDuration(conf.timeBetweenScheduleUpdate)}`);
-    log("info", `ScheduleAV will be updated every ${formatDuration(conf.timeBetweenScheduleAVUpdate)}`);
+    const updateEvery = (group) => (group.eventsOnly ? data.scheduleEventsConf : conf).timeBetweenScheduleUpdate;
+    if ([...groups.values()].some((group) => !group.eventsOnly)) {
+      log("info", `Ical events will be updated every ${formatDuration(conf.timeBetweenScheduleUpdate)}`);
+      log("info", `ScheduleAV will be updated every ${formatDuration(conf.timeBetweenScheduleAVUpdate)}`);
+    }
+    if ([...groups.values()].some((group) => group.eventsOnly)) {
+      log("info", `Events added to BACnet schedules will be updated every ${formatDuration(data.scheduleEventsConf.timeBetweenScheduleUpdate)}`);
+    }
 
-    for (const [name, group] of groups) {
-      loop(`${name} schedule update`, conf.timeBetweenScheduleUpdate, active, () => updateAllSchedules(group.api, group.zones, name, active, conf));
-      loop(`${name} scheduleAV update`, conf.timeBetweenScheduleAVUpdate, active, async () => {
+    for (const group of groups.values()) {
+      const label = group.eventsOnly ? `${group.name} (events)` : group.name;
+      loop(`${label} schedule update`, updateEvery(group), active, () => updateAllSchedules(group.driver, group.zones, label, active, group.conf));
+      if (group.eventsOnly) continue;
+      loop(`${label} scheduleAV update`, conf.timeBetweenScheduleAVUpdate, active, async () => {
         await sleep(1000);
-        if (active()) await updateScheduleAV(group.api, group.zones, conf, name);
+        if (active()) await group.driver.updateScheduleAV(group.zones, conf, label, deviceProfiles);
       });
     }
   }

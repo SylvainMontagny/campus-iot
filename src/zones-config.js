@@ -1,3 +1,43 @@
+const ICAL_TO_SCHEDULE = "icalToScheduleConf";
+const SCHEDULE_EVENTS = "scheduleEventsConf";
+
+function createDefaultZoneSettings() {
+  return {
+    groupEvents: true,
+    timeZone: "Europe/Paris",
+    eventsToDiscard: ["SOBRIETE ENERGETIQUE"],
+    minimumSlotDuration: 0,
+    valueOccupied: 19,
+    valueUnOccupied: 15,
+    timeOffsetBeforeStart: 60,
+    timeOffsetBeforeEnd: 60,
+    nbrDaysPreview: 10,
+    addSuffixToAdeURL: false,
+    weekly: {
+      monday: { transitions: {} },
+      tuesday: { transitions: {} },
+      wednesday: { transitions: {} },
+      thursday: { transitions: {} },
+      friday: { transitions: { 1: { time: "15:00:00.00", value: 7, key: "1" } } },
+      saturday: { transitions: { 1: { time: "00:00:00.00", value: 7, key: "1" } } },
+      sunday: {
+        transitions: {
+          1: { time: "00:00:00.00", value: 7, key: "1" },
+          2: { time: "22:00:00.00", value: null, key: "2" }
+        }
+      }
+    }
+  };
+}
+
+function createDefaultScheduleEventsConf() {
+  return {
+    timeBetweenScheduleUpdate: 180,
+    logs: { eventsAddedInSchedules: true, eventTimeCreation: true },
+    defaults: createDefaultZoneSettings()
+  };
+}
+
 function createDefaultZonesSchedules() {
   return {
     icalToScheduleConf: {
@@ -6,33 +46,9 @@ function createDefaultZonesSchedules() {
       scheduleInstanceRange: [0, 50],
       scheduleAVInstanceOffset: 10000,
       logs: { eventsAddedInSchedules: true, eventTimeCreation: true, scheduleAVUpdate: true },
-      defaults: {
-        groupEvents: true,
-        timeZone: "Europe/Paris",
-        eventsToDiscard: ["SOBRIETE ENERGETIQUE"],
-        minimumSlotDuration: 0,
-        valueOccupied: 19,
-        valueUnOccupied: 15,
-        timeOffsetBeforeStart: 60,
-        timeOffsetBeforeEnd: 60,
-        nbrDaysPreview: 10,
-        addSuffixToAdeURL: false,
-        weekly: {
-          monday: { transitions: {} },
-          tuesday: { transitions: {} },
-          wednesday: { transitions: {} },
-          thursday: { transitions: {} },
-          friday: { transitions: { 1: { time: "15:00:00.00", value: 7, key: "1" } } },
-          saturday: { transitions: { 1: { time: "00:00:00.00", value: 7, key: "1" } } },
-          sunday: {
-            transitions: {
-              1: { time: "00:00:00.00", value: 7, key: "1" },
-              2: { time: "22:00:00.00", value: null, key: "2" }
-            }
-          }
-        }
-      }
+      defaults: createDefaultZoneSettings()
     },
+    scheduleEventsConf: createDefaultScheduleEventsConf(),
     zones: []
   };
 }
@@ -93,7 +109,26 @@ function validateZonesSchedules(data, { deviceProfiles = {}, connections = {} } 
   if (!conf.defaults || typeof conf.defaults !== "object") errors.push(issue("Default zone settings are missing", `${confPath}.defaults`));
   else validateZoneSettings(conf.defaults, `${confPath}.defaults`, errors);
 
-  if (rangeValid && data.zones.length > max - min + 1) {
+  const eventsConf = data.scheduleEventsConf;
+  const eventsPath = "zonesSchedules.scheduleEventsConf";
+  if (eventsConf !== undefined) {
+    if (!eventsConf || typeof eventsConf !== "object") {
+      errors.push(issue("Must be an object", eventsPath));
+    } else {
+      if (!isNumber(eventsConf.timeBetweenScheduleUpdate) || eventsConf.timeBetweenScheduleUpdate <= 0) {
+        errors.push(issue("Must be a number of seconds greater than 0", `${eventsPath}.timeBetweenScheduleUpdate`));
+      }
+      if (eventsConf.logs !== undefined && (!eventsConf.logs || typeof eventsConf.logs !== "object" || !Object.values(eventsConf.logs).every((value) => typeof value === "boolean"))) {
+        errors.push(issue("Log options must be true or false", `${eventsPath}.logs`));
+      }
+      if (!eventsConf.defaults || typeof eventsConf.defaults !== "object") errors.push(issue("Default zone settings are missing", `${eventsPath}.defaults`));
+      else validateZoneSettings(eventsConf.defaults, `${eventsPath}.defaults`, errors);
+    }
+  }
+
+  const isEventsZone = (zone) => zone?.configuration === SCHEDULE_EVENTS;
+  const icalZoneCount = data.zones.filter((zone) => !isEventsZone(zone)).length;
+  if (rangeValid && icalZoneCount > max - min + 1) {
     errors.push(issue("Too many zones, increase the schedule instance range", "In ZONES & SCHEDULES"));
   }
 
@@ -101,12 +136,16 @@ function validateZonesSchedules(data, { deviceProfiles = {}, connections = {} } 
   if (data.excludedZones !== undefined && !Array.isArray(data.excludedZones)) {
     errors.push(issue("Excluded zones must be a list", "zonesSchedules.excludedZones"));
   }
+  const usedScheduleIds = new Set();
   const usedNumbers = {};
   data.zones.forEach((zone, index) => {
     const zonePath = `zonesSchedules.zones.${index}`;
     if (!zone || typeof zone !== "object") {
       errors.push(issue("Zone must be an object", zonePath));
       return;
+    }
+    if (zone.configuration !== undefined && ![ICAL_TO_SCHEDULE, SCHEDULE_EVENTS].includes(zone.configuration)) {
+      errors.push(issue("Unknown global configuration", `${zonePath}.configuration`));
     }
     // The name ends up in BACnet binding names that are used in URLs.
     if (typeof zone.scheduleName !== "string" || !zone.scheduleName || /\s/.test(zone.scheduleName)) {
@@ -118,13 +157,25 @@ function validateZonesSchedules(data, { deviceProfiles = {}, connections = {} } 
 
     const connection = connections[zone.connectionName];
     if (!connection) errors.push(issue("Select an existing BACnet BMS connection", `${zonePath}.connectionName`));
-    else if (connection.protocol !== "restAPIBacnet") errors.push(issue("Zones & Schedules needs a 'REST API BACnet' connection", `${zonePath}.connectionName`));
+    else if (!["restAPIBacnet", "bacnet"].includes(connection.protocol)) errors.push(issue("Zones & Schedules needs a 'BACnet' or 'REST API BACnet' connection", `${zonePath}.connectionName`));
     else if (!connection.ipAddress) errors.push(issue("The BMS connection has no IP address", `${zonePath}.connectionName`));
 
     if (typeof zone.url !== "string" || !/^https?:\/\//i.test(zone.url)) {
       errors.push(issue("iCal URL must start with http:// or https://", `${zonePath}.url`));
     }
     validateZoneSettings(zone, zonePath, errors);
+
+    if (isEventsZone(zone)) {
+      if (!eventsConf) errors.push(issue("The 'Add event to BACnet schedule object' configuration is missing", eventsPath));
+      if (!Number.isInteger(zone.scheduleID) || zone.scheduleID < 0) {
+        errors.push(issue("BACnet schedule ID must be a non-negative whole number", `${zonePath}.scheduleID`));
+      } else {
+        const key = `${zone.connectionName}|${zone.scheduleID}`;
+        if (usedScheduleIds.has(key)) errors.push(issue(`BACnet schedule ID ${zone.scheduleID} is used more than once`, `${zonePath}.scheduleID`));
+        usedScheduleIds.add(key);
+      }
+      return;
+    }
 
     if (!zone.devices || typeof zone.devices !== "object" || Array.isArray(zone.devices)) {
       errors.push(issue("Devices must be an object", `${zonePath}.devices`));
@@ -157,13 +208,21 @@ function validateZonesSchedules(data, { deviceProfiles = {}, connections = {} } 
   return errors;
 }
 
-// Fills every setting a zone does not override from the global defaults and assigns the schedule instance numbers.
-function resolveZones({ icalToScheduleConf, zones }) {
+// Fills every setting a zone does not override from the global defaults of its configuration.
+// Zones of the ical configuration get consecutive schedule instance numbers; the others keep their own schedule ID.
+function resolveZones({ icalToScheduleConf, scheduleEventsConf, zones }) {
   const [min] = icalToScheduleConf.scheduleInstanceRange;
-  return zones.map((zone, index) => {
+  let icalIndex = 0;
+  return zones.map((zone) => {
     const resolved = structuredClone(zone);
-    for (const [key, value] of Object.entries(icalToScheduleConf.defaults)) resolved[key] ??= structuredClone(value);
-    resolved.scheduleID = min + index;
+    const eventsOnly = zone.configuration === SCHEDULE_EVENTS;
+    resolved.configuration = eventsOnly ? SCHEDULE_EVENTS : ICAL_TO_SCHEDULE;
+    const defaults = eventsOnly ? scheduleEventsConf.defaults : icalToScheduleConf.defaults;
+    for (const [key, value] of Object.entries(defaults)) resolved[key] ??= structuredClone(value);
+    if (!eventsOnly) {
+      resolved.scheduleID = min + icalIndex;
+      icalIndex++;
+    }
     resolved.url = applyAdeUrlSuffix(resolved);
     return resolved;
   });
@@ -192,4 +251,4 @@ function findDuplicateIcalUrls(zones) {
     .map(([url, names]) => `Zones ${names.join(", ")} use the same iCal URL: ${url}`);
 }
 
-module.exports = { createDefaultZonesSchedules, validateZonesSchedules, resolveZones, applyAdeUrlSuffix, findDuplicateIcalUrls };
+module.exports = { createDefaultZonesSchedules, createDefaultScheduleEventsConf, validateZonesSchedules, resolveZones, applyAdeUrlSuffix, findDuplicateIcalUrls, ICAL_TO_SCHEDULE, SCHEDULE_EVENTS };

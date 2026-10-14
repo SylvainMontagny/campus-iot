@@ -20,6 +20,13 @@ The configuration editor persists device profiles in `data/device-profiles.json`
 
 Use the **MQTT connection** section in the navigation rail to enter the broker server, port, login, password, and subscription topic. The server subscribes with MQTT.js; connection credentials are held in server memory and are not written to disk. The header indicator turns green after the broker connection and topic subscription both succeed. Incoming The Things Stack, ChirpStack, and Actility uplinks are mapped using `data/device-profiles.json`; the MQTT message log displays legacy-compatible packet errors and each resulting device object.
 
+**Zones & Schedules** has two global configurations, stored in `data/zones-schedules.json` as `icalToScheduleConf` and `scheduleEventsConf`. Each zone chooses one with its `configuration` field (default `icalToScheduleConf`):
+
+- **Manage LoRaWAN devices from ical calendar** (`icalToScheduleConf`): the application creates the BACnet schedules and scheduleAV objects of the zones, binds the scheduleAV values to the LoRaWAN devices, then keeps the schedules fed from the iCal calendars.
+- **Add event to BACnet schedule object** (`scheduleEventsConf`): the zone gives the `scheduleID` of an existing BACnet schedule object; the application only updates its events from the iCal calendar (no schedule, scheduleAV, binding or instance-range handling). Zones saved before this option existed use the first configuration.
+
+Every BMS action of Zones & Schedules follows the **BMS protocol** of the zone's BMS connection. With **REST API BACnet** the Distech REST API is used. With **BACnet** the schedules are managed natively with bacnet-js (`src/bacnet-schedule.js`): schedule and scheduleAV objects are created and deleted with the BACnet object services, events are written to `EXCEPTION_SCHEDULE`, `WEEKLY_SCHEDULE` and `SCHEDULE_DEFAULT`, and, as BACnet has no binding service, the scheduleAV value is written directly (priority 14) to the bound device objects.
+
 ## HTTP API
 
 - `GET /api/health` returns service status.

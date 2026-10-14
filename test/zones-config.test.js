@@ -1,4 +1,4 @@
-const test = require("node:test");
+﻿const test = require("node:test");
 const assert = require("node:assert/strict");
 const { createDefaultZonesSchedules, validateZonesSchedules, resolveZones, applyAdeUrlSuffix, findDuplicateIcalUrls } = require("../src/zones-config");
 const { buildSpecialEvents } = require("../src/ical-schedule");
@@ -82,6 +82,46 @@ test("zones sharing an iCal URL are reported by name", () => {
   ];
   assert.deepEqual(findDuplicateIcalUrls(zones), ["Zones A, B use the same iCal URL: https://x/a.ics"]);
   assert.deepEqual(findDuplicateIcalUrls(zones.slice(1)), []);
+});
+
+test("zones adding events to a BACnet schedule need a schedule ID but no devices", () => {
+  const data = makeData({ configuration: "scheduleEventsConf", scheduleID: 120, devices: undefined });
+  assert.deepEqual(validateZonesSchedules(data, { deviceProfiles, connections }), []);
+
+  data.zones[0].scheduleID = "";
+  assert.deepEqual(validateZonesSchedules(data, { deviceProfiles, connections }).map((error) => error.path), ["zonesSchedules.zones.0.scheduleID"]);
+});
+
+test("a BACnet schedule ID cannot be reused but may fall in the ical range", () => {
+  const data = makeData();
+  data.zones.push({ scheduleName: "A", configuration: "scheduleEventsConf", connectionName: "bms", url: "https://example.org/b.ics", scheduleID: 3 });
+  data.zones.push({ scheduleName: "B", configuration: "scheduleEventsConf", connectionName: "bms", url: "https://example.org/c.ics", scheduleID: 200 });
+  data.zones.push({ scheduleName: "C", configuration: "scheduleEventsConf", connectionName: "bms", url: "https://example.org/d.ics", scheduleID: 200 });
+  const paths = validateZonesSchedules(data, { deviceProfiles, connections }).map((error) => error.path);
+  assert.deepEqual(paths, ["zonesSchedules.zones.3.scheduleID"]);
+});
+
+test("both BACnet and REST API BACnet connections are accepted", () => {
+  const data = makeData();
+  assert.deepEqual(validateZonesSchedules(data, { deviceProfiles, connections: { bms: { protocol: "bacnet", ipAddress: "10.0.0.1" } } }), []);
+  assert.equal(validateZonesSchedules(data, { deviceProfiles, connections: { bms: { protocol: "other", ipAddress: "10.0.0.1" } } }).length, 1);
+});
+
+test("zones of the events configuration use their own defaults and keep their schedule ID", () => {
+  const data = makeData();
+  data.scheduleEventsConf.defaults.valueOccupied = 21;
+  data.zones.push({ scheduleName: "E", configuration: "scheduleEventsConf", connectionName: "bms", url: "https://example.org/e.ics", scheduleID: 77 });
+  const [ical, events] = resolveZones(data);
+  assert.equal(ical.valueOccupied, 19);
+  assert.equal(ical.scheduleID, 0);
+  assert.equal(events.valueOccupied, 21);
+  assert.equal(events.scheduleID, 77);
+});
+
+test("the events configuration has no ScheduleAV or instance range settings", () => {
+  const data = makeData();
+  assert.equal(data.scheduleEventsConf.logs.scheduleAVUpdate, undefined);
+  assert.equal(data.scheduleEventsConf.scheduleInstanceRange, undefined);
 });
 
 test("grouped events are merged per day with the configured offsets", () => {

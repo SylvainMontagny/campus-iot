@@ -6,7 +6,7 @@ const { validateConfig } = require("./src/config-validation");
 const { createDefaultConfig } = require("./src/default-config");
 const { createMqttService } = require("./src/mqtt-service");
 const { createIcalScheduleService } = require("./src/ical-schedule");
-const { createDefaultZonesSchedules, validateZonesSchedules, resolveZones, findDuplicateIcalUrls } = require("./src/zones-config");
+const { createDefaultZonesSchedules, createDefaultScheduleEventsConf, validateZonesSchedules, resolveZones, findDuplicateIcalUrls } = require("./src/zones-config");
 const { testBmsConnection } = require("./src/bms-test");
 const { testIcalUrl } = require("./src/ical-test");
 const { version } = require("./package.json");
@@ -147,7 +147,9 @@ async function writeJsonAtomically(filePath, value) {
 
 async function readZonesSchedules(directory = dataDirectory) {
   try {
-    return JSON.parse(await fs.readFile(path.join(directory, "zones-schedules.json"), "utf8"));
+    const stored = JSON.parse(await fs.readFile(path.join(directory, "zones-schedules.json"), "utf8"));
+    // Files saved before the second global configuration existed get its defaults.
+    return { ...stored, scheduleEventsConf: stored.scheduleEventsConf ?? createDefaultScheduleEventsConf() };
   } catch (error) {
     if (error.code === "ENOENT") return createDefaultZonesSchedules();
     throw error;
@@ -158,6 +160,7 @@ async function writeZonesSchedules(zonesSchedules, directory = dataDirectory) {
   await fs.mkdir(directory, { recursive: true });
   await writeJsonAtomically(path.join(directory, "zones-schedules.json"), {
     icalToScheduleConf: zonesSchedules.icalToScheduleConf,
+    scheduleEventsConf: zonesSchedules.scheduleEventsConf ?? createDefaultScheduleEventsConf(),
     zones: zonesSchedules.zones,
     excludedZones: zonesSchedules.excludedZones || []
   });
@@ -166,6 +169,7 @@ async function writeZonesSchedules(zonesSchedules, directory = dataDirectory) {
 function startZonesSchedules(zonesSchedules, config) {
   return scheduleService.start({
     icalToScheduleConf: zonesSchedules.icalToScheduleConf,
+    scheduleEventsConf: zonesSchedules.scheduleEventsConf,
     zones: zonesSchedules.zones,
     deviceProfiles: config.deviceProfiles,
     connections: config.connections
@@ -371,7 +375,7 @@ app.put("/api/config", async (request, response, next) => {
     if (zonesSchedules !== undefined) {
       await writeZonesSchedules(zonesSchedules);(zonesSchedules);
       const zones = resolveZones(zonesSchedules);
-      mqttService.log("output", `Zones & Schedules saved.\nzones = ${JSON.stringify(zones, null, 2)}\nicalToScheduleConf = ${JSON.stringify(zonesSchedules.icalToScheduleConf, null, 2)}`);
+      mqttService.log("output", `Zones & Schedules saved.\nzones = ${JSON.stringify(zones, null, 2)}\nicalToScheduleConf = ${JSON.stringify(zonesSchedules.icalToScheduleConf, null, 2)}\nscheduleEventsConf = ${JSON.stringify(zonesSchedules.scheduleEventsConf, null, 2)}`);
       startZonesSchedules(zonesSchedules, config);
     }
     response.json({ saved: true, warnings });

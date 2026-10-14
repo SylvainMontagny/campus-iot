@@ -19,6 +19,22 @@ const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, (character
   "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
 }[character]));
 
+const ICAL_CONF = "icalToScheduleConf";
+const EVENTS_CONF = "scheduleEventsConf";
+const SCHEDULE_CONFIGS = [
+  [ICAL_CONF, "Manage LoRaWAN devices from ical calendar"],
+  [EVENTS_CONF, "Add event to BACnet schedule object"]
+];
+
+function defaultScheduleDefaults() {
+  return {
+    groupEvents: true, timeZone: "Europe/Paris", eventsToDiscard: ["SOBRIETE ENERGETIQUE"],
+    minimumSlotDuration: 0, valueOccupied: 19, valueUnOccupied: 15,
+    timeOffsetBeforeStart: 60, timeOffsetBeforeEnd: 60, nbrDaysPreview: 10, addSuffixToAdeURL: false,
+    weekly: {}
+  };
+}
+
 function defaultZonesSchedules() {
   return {
     icalToScheduleConf: {
@@ -27,16 +43,28 @@ function defaultZonesSchedules() {
       scheduleInstanceRange: [0, 50],
       scheduleAVInstanceOffset: 10000,
       logs: { eventsAddedInSchedules: true, eventTimeCreation: true, scheduleAVUpdate: true },
-      defaults: {
-        groupEvents: true, timeZone: "Europe/Paris", eventsToDiscard: ["SOBRIETE ENERGETIQUE"],
-        minimumSlotDuration: 0, valueOccupied: 19, valueUnOccupied: 15,
-        timeOffsetBeforeStart: 60, timeOffsetBeforeEnd: 60, nbrDaysPreview: 10, addSuffixToAdeURL: false,
-        weekly: {}
-      }
+      defaults: defaultScheduleDefaults()
+    },
+    scheduleEventsConf: {
+      timeBetweenScheduleUpdate: 180,
+      logs: { eventsAddedInSchedules: true, eventTimeCreation: true },
+      defaults: defaultScheduleDefaults()
     },
     zones: []
   };
 }
+
+// Fills what files saved before the second global configuration (or the log options) do not contain.
+function normalizeZonesSchedules(zonesSchedules) {
+  const defaults = defaultZonesSchedules();
+  for (const [key] of SCHEDULE_CONFIGS) {
+    zonesSchedules[key] = { ...defaults[key], ...zonesSchedules[key] };
+    zonesSchedules[key].logs = { ...defaults[key].logs, ...zonesSchedules[key].logs };
+  }
+  return zonesSchedules;
+}
+
+const confKeyOfZone = (zone) => (zone?.configuration === EVENTS_CONF ? EVENTS_CONF : ICAL_CONF);
 
 function defaultConfig() {
   return {
@@ -245,7 +273,7 @@ function renderNavigation() {
   state.selectedZone = zones.length ? Math.min(Math.max(state.selectedZone ?? 0, 0), zones.length - 1) : null;
   $("#zone-navigation").innerHTML = zones.map((zone, index) => `
     <button class="device-nav-item${state.selectedView === "zone" && index === state.selectedZone ? " is-selected" : ""}" type="button" data-select-zone="${index}">
-      <span class="device-nav-copy"><strong>${escapeHtml(zone.scheduleName)}${SCHEDULE_ROWS.flat().every((key) => zone[key] === undefined) ? ' <small class="zone-default-tag">Default config</small>' : ""}</strong><small>Occ: ${escapeHtml(String(zone.valueOccupied ?? state.config.zonesSchedules.icalToScheduleConf.defaults.valueOccupied))} · Unocc: ${escapeHtml(String(zone.valueUnOccupied ?? state.config.zonesSchedules.icalToScheduleConf.defaults.valueUnOccupied))}</small></span>
+      <span class="device-nav-copy"><strong>${escapeHtml(zone.scheduleName)}${SCHEDULE_ROWS.flat().every((key) => zone[key] === undefined) ? ' <small class="zone-default-tag">Default config</small>' : ""}</strong><small>Occ: ${escapeHtml(String(zone.valueOccupied ?? state.config.zonesSchedules[confKeyOfZone(zone)].defaults.valueOccupied))} · Unocc: ${escapeHtml(String(zone.valueUnOccupied ?? state.config.zonesSchedules[confKeyOfZone(zone)].defaults.valueUnOccupied))}</small></span>
       <span class="nav-status-dot ${zone.excluded ? "is-excluded" : "is-included"}" title="${zone.excluded ? "Excluded" : "Included"}" aria-hidden="true"></span>
       <span class="nav-chevron" aria-hidden="true">›</span>
     </button>`).join("");
@@ -453,7 +481,7 @@ const SCHEDULE_ROWS = [
 const SCHEDULE_LOGS = [
   ["eventsAddedInSchedules", "ical Event added in schedules"],
   ["eventTimeCreation", "ical Event time creation"],
-  ["scheduleAVUpdate", "Schedule AV update"]
+  ["scheduleAVUpdate", "Schedule AV update", ICAL_CONF]
 ];
 
 // Settings that share a row are displayed side by side; the offsets only apply to merged events.
@@ -466,13 +494,13 @@ function scheduleSettingRows(rows, valueOf, attribute, isGlobal, grouped) {
   }).join("");
 }
 
-function advancedPanel(key, bodyHtml) {
+function advancedPanel(key, bodyHtml, title = "Advanced settings") {
   const expanded = Boolean(state.expandedAdvanced[key]);
   return `<section class="device-card advanced-card${expanded ? " is-expanded" : ""}">
     <div class="panel-heading-row">
       <button class="panel-toggle" type="button" data-panel-toggle="advanced" data-advanced-key="${escapeHtml(key)}" aria-expanded="${expanded}">
         <span class="panel-chevron" aria-hidden="true">${expanded ? "−" : "+"}</span>
-        <span class="panel-heading-copy"><strong>Advanced settings</strong></span>
+        <span class="panel-heading-copy"><strong>${escapeHtml(title)}</strong></span>
       </button>
     </div>
     <div class="device-card-body"${expanded ? "" : " hidden"}>${bodyHtml}</div>
@@ -500,40 +528,55 @@ function downlinkObjectNames(deviceProfile) {
     .map(([name]) => name);
 }
 
-function renderScheduleGlobal() {
-  const conf = state.config.zonesSchedules.icalToScheduleConf;
-  const [first, last] = conf.scheduleInstanceRange;
+function renderScheduleConfSection(confKey, title) {
+  const conf = state.config.zonesSchedules[confKey];
+  const isIcal = confKey === ICAL_CONF;
   const confField = (label, path, value, options = {}) => inputField(label, path, value, { type: "number", step: 1, ...options }).replace("data-path=", "data-schedule-conf=");
   const grouped = conf.defaults.groupEvents === true;
   const valueOf = (key) => conf.defaults[key];
-  const advanced = `
+  const icalOnlyFields = isIcal ? (() => {
+    const [first, last] = conf.scheduleInstanceRange;
+    return `
     <div class="field-grid">
       <div class="field-row">${confField("ScheduleAV update interval (seconds)", "timeBetweenScheduleAVUpdate", conf.timeBetweenScheduleAVUpdate, { min: 1 })}</div>
       <div class="field-row">${confField("First ScheduleAV instance number", "scheduleAVInstanceOffset", conf.scheduleAVInstanceOffset, { min: 0 })}</div>
     </div>
     <div class="subsection-heading debug-heading"><div><h3>Schedule instance number range</h3></div></div>
-    <div class="field-grid"><div class="field-pair">${confField("First instance number", "scheduleInstanceRange.0", first, { min: 0 })}${confField("Last instance number", "scheduleInstanceRange.1", last, { min: 0 })}</div></div>
+    <div class="field-grid"><div class="field-pair">${confField("First instance number", "scheduleInstanceRange.0", first, { min: 0 })}${confField("Last instance number", "scheduleInstanceRange.1", last, { min: 0 })}</div></div>`;
+  })() : "";
+  const advanced = `
+    ${icalOnlyFields}
     <div class="subsection-heading debug-heading"><div><h3>Default zone settings</h3></div></div>
     <div class="field-grid">${scheduleSettingRows(SCHEDULE_ROWS.filter((row) => row !== OCCUPANCY_ROW && row !== OFFSET_ROW), valueOf, "data-schedule-default", true, grouped)}</div>`;
-  $("#schedule-global-editor").innerHTML = `
-    <div class="section-heading"><div><h2>Basic settings</h2></div></div>
+  const logs = SCHEDULE_LOGS.filter(([, , onlyFor]) => !onlyFor || onlyFor === confKey);
+  const number = isIcal ? 1 : 2;
+  return `<section class="config-section schedule-section schedule-global-config" data-conf-key="${confKey}" aria-label="Global configuration ${number}">
+    <div class="section-heading device-heading"><div><p class="eyebrow">Global configuration ${number}</p><h2>${escapeHtml(title)}</h2></div></div>
+    <div class="subsection-heading debug-heading"><div><h3>Default basic settings</h3></div></div>
     <div class="field-grid">
       ${scheduleSettingRows([OCCUPANCY_ROW, OFFSET_ROW], valueOf, "data-schedule-default", true, grouped)}
       <div class="field-row">${confField("Schedule update interval (seconds)", "timeBetweenScheduleUpdate", conf.timeBetweenScheduleUpdate, { min: 1 })}</div>
     </div>
     <div class="subsection-heading debug-heading"><div><h3>Message logs</h3></div></div>
-    <div class="check-grid">${SCHEDULE_LOGS.map(([key, label]) => `<label class="check-field"><input type="checkbox" data-schedule-log="${key}"${conf.logs[key] !== false ? " checked" : ""}><span>${escapeHtml(label)}</span></label>`).join("")}</div>
-    ${advancedPanel("global", advanced)}`;
+    <div class="check-grid">${logs.map(([key, label]) => `<label class="check-field"><input type="checkbox" data-schedule-log="${key}"${conf.logs[key] !== false ? " checked" : ""}><span>${escapeHtml(label)}</span></label>`).join("")}</div>
+    ${advancedPanel(isIcal ? "global" : "global-events", advanced, "Default advanced settings")}
+  </section>`;
+}
+
+function renderScheduleGlobal() {
+  $("#schedule-global-editor").innerHTML = SCHEDULE_CONFIGS.map(([key, title]) => renderScheduleConfSection(key, title)).join("");
 }
 
 function renderZone() {
   const container = $("#zone-editor");
-  const { icalToScheduleConf: { defaults }, zones } = state.config.zonesSchedules;
+  const { zones } = state.config.zonesSchedules;
   const zone = zones[state.selectedZone];
   if (!zone) {
     container.innerHTML = `<div class="empty-state"><div class="empty-symbol" aria-hidden="true">+</div><h2>No zones yet</h2><p>Add a zone to synchronise its agenda with a BACnet schedule.</p><button class="button button-primary" type="button" data-action="add-zone">Add zone</button></div>`;
     return;
   }
+  const eventsOnly = confKeyOfZone(zone) === EVENTS_CONF;
+  const { defaults } = state.config.zonesSchedules[confKeyOfZone(zone)];
 
   const zoneField = (html) => html.replace("data-path=", "data-zone-field=");
   const connectionNames = Object.keys(state.config.connections);
@@ -571,15 +614,16 @@ function renderZone() {
     <section class="config-section schedule-section${zone.excluded ? " is-zone-excluded" : ""}">
       <div class="section-heading"><div><h2>Basic settings</h2></div>      <div class="heading-actions"><button class="button button-outline button-small" type="button" data-action="reset-zone-defaults">Set default</button><button class="button button-outline button-small" type="button" data-action="toggle-zone-excluded">${zone.excluded ? "Include" : "Exclude"}</button><button class="button button-danger-quiet button-small" type="button" data-action="delete-zone">Remove</button></div></div>
       <div class="field-grid">
-        <div class="field-row">${zoneField(inputField("Zone / schedule name", "scheduleName", zone.scheduleName))}</div>
+        <div class="field-row">${zoneField(selectField("Global configuration applied to this zone", "configuration", confKeyOfZone(zone), SCHEDULE_CONFIGS))}</div>
+        <div class="${eventsOnly ? "field-pair" : "field-row"}">${zoneField(inputField("Zone / schedule name", "scheduleName", zone.scheduleName))}${eventsOnly ? zoneField(inputField("BACnet schedule ID", "scheduleID", zone.scheduleID ?? "", { type: "number", min: 0, step: 1 })) : ""}</div>
         <div class="field-row">${zoneField(selectField("On which BMS will be BACnet schedule object?", "connectionName", zone.connectionName || "", connectionOptions))}</div>
         <div class="field-row"><div class="zone-url-test">${zoneField(inputField("iCal URL", "url", zone.url, { placeholder: "https://" }))}<button class="button button-primary" type="button" data-action="test-ical">Test</button></div></div>
       </div>
       ${advancedPanel(`zone:${state.selectedZone}`, `<div class="field-grid">${scheduleSettingRows(SCHEDULE_ROWS, (key) => zone[key] ?? defaults[key], "data-zone-field", false, grouped)}</div>`)}
     </section>
-    <div class="zone-devices${zone.excluded ? " is-zone-excluded" : ""}">
+    ${eventsOnly ? "" : `<div class="zone-devices${zone.excluded ? " is-zone-excluded" : ""}">
     <div class="objects-heading"><div><h2>Devices <span class="object-count">${Object.keys(zone.devices).length}</span></h2></div><button class="button button-outline" type="button" data-action="add-zone-device">+ Add device</button></div>
-    <div class="object-list">${deviceRows || `<div class="empty-objects">No device yet. Add the LoRaWAN devices controlled by this zone schedule.</div>`}</div></div>`;
+    <div class="object-list">${deviceRows || `<div class="empty-objects">No device yet. Add the LoRaWAN devices controlled by this zone schedule.</div>`}</div></div>`}`;
 }
 
 function handleZoneField(input) {
@@ -600,6 +644,12 @@ function handleZoneField(input) {
     return;
   } else if (key === "connectionName") {
     zone[key] = input.value.trim();
+  } else if (key === "configuration") {
+    zone.configuration = input.value;
+    if (input.value === EVENTS_CONF) zone.scheduleID ??= "";
+    else delete zone.scheduleID;
+  } else if (key === "scheduleID") {
+    zone.scheduleID = inputValue(input);
   } else {
     applyScheduleSetting(zone, input, key);
     return;
@@ -973,9 +1023,7 @@ async function loadConfig() {
     state.config.connections ||= {};
     state.config.deviceConnections ||= {};
     state.config.deviceProfiles ||= {};
-    state.config.zonesSchedules = mergeZones(state.config.zonesSchedules || defaultZonesSchedules());
-    const scheduleConf = state.config.zonesSchedules.icalToScheduleConf;
-    scheduleConf.logs = { ...defaultZonesSchedules().icalToScheduleConf.logs, ...scheduleConf.logs };
+    state.config.zonesSchedules = normalizeZonesSchedules(mergeZones(state.config.zonesSchedules || defaultZonesSchedules()));
     for (const deviceName of Object.keys(state.config.deviceProfiles)) state.config.deviceConnections[deviceName] ||= "";
   } catch (error) {
     state.config = defaultConfig();
@@ -1181,16 +1229,16 @@ document.addEventListener("change", (event) => {
     return;
   }
   if (input.matches("#schedule-global-editor [data-schedule-conf]")) {
-    setPath(state.config.zonesSchedules.icalToScheduleConf, input.dataset.scheduleConf, inputValue(input));
+    setPath(state.config.zonesSchedules[input.closest("[data-conf-key]").dataset.confKey], input.dataset.scheduleConf, inputValue(input));
     render();
     return;
   }
   if (input.matches("#schedule-global-editor [data-schedule-log]")) {
-    state.config.zonesSchedules.icalToScheduleConf.logs[input.dataset.scheduleLog] = input.checked;
+    state.config.zonesSchedules[input.closest("[data-conf-key]").dataset.confKey].logs[input.dataset.scheduleLog] = input.checked;
     return;
   }
   if (input.matches("#schedule-global-editor [data-schedule-default]")) {
-    applyScheduleSetting(state.config.zonesSchedules.icalToScheduleConf.defaults, input, input.dataset.scheduleDefault);
+    applyScheduleSetting(state.config.zonesSchedules[input.closest("[data-conf-key]").dataset.confKey].defaults, input, input.dataset.scheduleDefault);
     return;
   }
   if (input.matches("#zone-editor [data-zone-field]")) {
@@ -1425,7 +1473,7 @@ document.addEventListener("click", async (event) => {
         const { zones } = state.config.zonesSchedules;
         let index = zones.length + 1;
         while (zones.some((zone) => zone.scheduleName === `zone-${index}`)) index += 1;
-        zones.push({ scheduleName: `zone-${index}`, connectionName: Object.keys(state.config.connections)[0] || "", url: "", excluded: false, devices: {} });
+        zones.push({ scheduleName: `zone-${index}`, configuration: ICAL_CONF, connectionName: Object.keys(state.config.connections)[0] || "", url: "", excluded: false, devices: {} });
         state.selectedZone = zones.length - 1;
         state.selectedView = "zone";
         break;
@@ -1597,10 +1645,7 @@ $("#import-file").addEventListener("change", async (event) => {
       candidate.zonesSchedules = mergeZones(imported.zonesSchedules);
     }
     if (candidate.zonesSchedules.icalToScheduleConf && typeof candidate.zonesSchedules.icalToScheduleConf === "object") {
-      candidate.zonesSchedules.icalToScheduleConf.logs = {
-        ...defaultZonesSchedules().icalToScheduleConf.logs,
-        ...candidate.zonesSchedules.icalToScheduleConf.logs
-      };
+      normalizeZonesSchedules(candidate.zonesSchedules);
     }
     const mqttSettings = imported.mqtt;
     if (mqttSettings !== undefined && (!mqttSettings || typeof mqttSettings !== "object" || Array.isArray(mqttSettings))) {
