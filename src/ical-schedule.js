@@ -1,7 +1,7 @@
 const axios = require("axios");
 const https = require("node:https");
 const ical = require("node-ical");
-const { validateRoomsSchedules, resolveRooms } = require("./rooms-config");
+const { validateZonesSchedules, resolveZones } = require("./zones-config");
 
 // unref so a pending wait never keeps the process alive.
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms).unref());
@@ -53,11 +53,11 @@ function tzParts(date, timeZone) {
 
 const text = (value) => (value && typeof value === "object" ? String(value.val ?? "") : String(value ?? ""));
 
-/** Fetch the room iCal and return plain {start, end, summary, description} within the preview window. */
-async function fetchEvents(room) {
-  const data = await ical.async.fromURL(room.url);
+/** Fetch the zone iCal and return plain {start, end, summary, description} within the preview window. */
+async function fetchEvents(zone) {
+  const data = await ical.async.fromURL(zone.url);
   const now = Date.now();
-  const horizon = now + room.nbrDaysPreview * 86400000;
+  const horizon = now + zone.nbrDaysPreview * 86400000;
   const out = [];
 
   for (const event of Object.values(data)) {
@@ -81,12 +81,12 @@ async function fetchEvents(room) {
   return out.sort((a, b) => a.start - b.start);
 }
 
-/** Build the "special-events" object for one room. */
-function buildSpecialEvents(room, rawEvents, warn = () => {}) {
-  const tz = room.timeZone;
-  let events = rawEvents.filter((event) => !room.eventsToDiscard.some((name) => event.description.includes(name)));
+/** Build the "special-events" object for one zone. */
+function buildSpecialEvents(zone, rawEvents, warn = () => {}) {
+  const tz = zone.timeZone;
+  let events = rawEvents.filter((event) => !zone.eventsToDiscard.some((name) => event.description.includes(name)));
 
-  if (room.groupEvents) {
+  if (zone.groupEvents) {
     const byDay = new Map();
     for (const event of events) {
       const key = tzParts(event.start, tz).dateKey;
@@ -105,10 +105,10 @@ function buildSpecialEvents(room, rawEvents, warn = () => {}) {
   let eventID = 1;
 
   events.forEach((event, index) => {
-    if (!room.groupEvents) {
+    if (!zone.groupEvents) {
       const duration = (event.end - event.start) / 60000;
-      if (duration < room.minimumSlotDuration) {
-        warn(`Room ${room.scheduleName}: event ${index} "${event.summary}" discarded (duration < ${room.minimumSlotDuration} min).`);
+      if (duration < zone.minimumSlotDuration) {
+        warn(`Zone ${zone.scheduleName}: event ${index} "${event.summary}" discarded (duration < ${zone.minimumSlotDuration} min).`);
         return;
       }
     }
@@ -117,19 +117,19 @@ function buildSpecialEvents(room, rawEvents, warn = () => {}) {
     let startTime;
     let endTime;
 
-    if (room.groupEvents) {
-      const start = new Date(event.start.getTime() - room.timeOffsetBeforeStart * 60000);
-      const end = new Date(event.end.getTime() - room.timeOffsetBeforeEnd * 60000);
+    if (zone.groupEvents) {
+      const start = new Date(event.start.getTime() - zone.timeOffsetBeforeStart * 60000);
+      const end = new Date(event.end.getTime() - zone.timeOffsetBeforeEnd * 60000);
       const startParts = tzParts(start, tz);
       startTime = startParts.time;
       // The offset may push the start into the previous day.
       if (startParts.dateKey < originalDay.dateKey) {
         startTime = "00:00:00";
-        warn(`Room ${room.scheduleName}: event ${index} "${event.summary}" clamped to midnight.`);
+        warn(`Zone ${zone.scheduleName}: event ${index} "${event.summary}" clamped to midnight.`);
       }
       endTime = tzParts(end, tz).time;
       if (startTime >= endTime) {
-        warn(`Room ${room.scheduleName}: event ${index} "${event.summary}" discarded (start >= end).`);
+        warn(`Zone ${zone.scheduleName}: event ${index} "${event.summary}" discarded (start >= end).`);
         return;
       }
     } else {
@@ -145,7 +145,7 @@ function buildSpecialEvents(room, rawEvents, warn = () => {}) {
       },
       name: event.summary,
       transitions: {
-        1: { time: startTime, value: room.valueOccupied, key: "1" },
+        1: { time: startTime, value: zone.valueOccupied, key: "1" },
         2: { time: endTime, value: null, key: "2" }
       },
       key: String(eventID)
@@ -161,7 +161,7 @@ function createIcalScheduleService({ log = () => {} } = {}) {
   // Configurations saved before the log options existed keep every message.
   const logEnabled = (conf, option) => conf.logs?.[option] !== false;
 
-  async function setupSchedules(api, rooms, conf) {
+  async function setupSchedules(api, zones, conf) {
     const [min, max] = conf.scheduleInstanceRange;
     const deletions = [];
     for (let i = min; i <= max; i++) {
@@ -169,20 +169,20 @@ function createIcalScheduleService({ log = () => {} } = {}) {
     }
     await batch(api, deletions);
 
-    await batch(api, rooms.map((room) => ({
+    await batch(api, zones.map((zone) => ({
       method: "POST",
       url: "/api/rest/v2/services/bacnet/local/objects/add",
-      body: { "object-type": "schedule", "instance-number": room.scheduleID, name: room.scheduleName }
+      body: { "object-type": "schedule", "instance-number": zone.scheduleID, name: zone.scheduleName }
     })));
 
-    await batch(api, rooms.map((room) => ({
+    await batch(api, zones.map((zone) => ({
       method: "POST",
-      url: `/api/rest/v2/services/bacnet/local/objects/schedules/${room.scheduleID}`,
-      body: { "schedule-default": 19, description: `Room ${room.scheduleName}` }
+      url: `/api/rest/v2/services/bacnet/local/objects/schedules/${zone.scheduleID}`,
+      body: { "schedule-default": 19, description: `Zone ${zone.scheduleName}` }
     })));
   }
 
-  async function setupScheduleAV(api, rooms, conf) {
+  async function setupScheduleAV(api, zones, conf) {
     const [min, max] = conf.scheduleInstanceRange;
     const offset = conf.scheduleAVInstanceOffset;
     const deletions = [];
@@ -191,20 +191,20 @@ function createIcalScheduleService({ log = () => {} } = {}) {
     }
     await batch(api, deletions);
 
-    await batch(api, rooms.map((room) => ({
+    await batch(api, zones.map((zone) => ({
       method: "POST",
       url: "/api/rest/v2/services/bacnet/local/objects/add",
-      body: { "object-type": "AnalogValue", "instance-number": room.scheduleID + offset, name: `scheduleAV-${room.scheduleName}` }
+      body: { "object-type": "AnalogValue", "instance-number": zone.scheduleID + offset, name: `scheduleAV-${zone.scheduleName}` }
     })));
 
-    await batch(api, rooms.map((room) => ({
+    await batch(api, zones.map((zone) => ({
       method: "POST",
-      url: `/api/rest/v2/services/bacnet/local/objects/analog-values/${room.scheduleID + offset}`,
-      body: { "default-value": room.valueOccupied }
+      url: `/api/rest/v2/services/bacnet/local/objects/analog-values/${zone.scheduleID + offset}`,
+      body: { "default-value": zone.valueOccupied }
     })));
   }
 
-  async function setupBindings(api, rooms, conf, deviceProfiles) {
+  async function setupBindings(api, zones, conf, deviceProfiles) {
     const existing = (await api.get("/services/events/bindings")).data;
     if (existing && typeof existing === "object") {
       await batch(api, Object.keys(existing).map((name) => ({
@@ -215,18 +215,18 @@ function createIcalScheduleService({ log = () => {} } = {}) {
 
     const offset = conf.scheduleAVInstanceOffset;
     const requests = [];
-    for (const room of rooms) {
-      for (const [profileName, device] of Object.entries(room.devices)) {
+    for (const zone of zones) {
+      for (const [profileName, device] of Object.entries(zone.devices)) {
         const bacnet = deviceProfiles[profileName].bacnet;
         const objectOffset = bacnet.objects[device.AVToBindName].instanceNum;
         for (const number of device.deviceNums) {
           const avInstance = bacnet.instanceRangeAV * number + objectOffset + bacnet.offsetAV;
           requests.push({
             method: "POST",
-            url: `/api/rest/v2/services/events/bindings/binding_scheduleAV-${room.scheduleName}_${device.AVToBindName}-${avInstance}`,
+            url: `/api/rest/v2/services/events/bindings/binding_scheduleAV-${zone.scheduleName}_${device.AVToBindName}-${avInstance}`,
             body: {
               type: "ControlElement",
-              "element-a": `/services/bacnet/local/objects/analog-values/${offset + room.scheduleID}`,
+              "element-a": `/services/bacnet/local/objects/analog-values/${offset + zone.scheduleID}`,
               "element-b": `/services/bacnet/local/objects/analog-values/${avInstance}`,
               initialize: "a-to-b",
               "sync-a-to-b": {
@@ -241,37 +241,37 @@ function createIcalScheduleService({ log = () => {} } = {}) {
     await batch(api, requests);
   }
 
-  async function updateRoomSchedule(api, room) {
-    const special = buildSpecialEvents(room, await fetchEvents(room), (message) => log("warning", message));
-    await api.post(`/services/bacnet/local/objects/schedules/${room.scheduleID}`, {
+  async function updateZoneSchedule(api, zone) {
+    const special = buildSpecialEvents(zone, await fetchEvents(zone), (message) => log("warning", message));
+    await api.post(`/services/bacnet/local/objects/schedules/${zone.scheduleID}`, {
       "special-events": special,
-      "weekly-schedule": room.weekly,
-      "object-name": room.scheduleName,
-      "schedule-default": room.valueUnOccupied
+      "weekly-schedule": zone.weekly,
+      "object-name": zone.scheduleName,
+      "schedule-default": zone.valueUnOccupied
     });
   }
 
-  async function updateAllSchedules(api, rooms, label, active, conf) {
-    if (logEnabled(conf, "eventsAddedInSchedules")) log("info", `${label}: creating events for ${rooms.length} rooms...`);
+  async function updateAllSchedules(api, zones, label, active, conf) {
+    if (logEnabled(conf, "eventsAddedInSchedules")) log("info", `${label}: creating events for ${zones.length} zones...`);
     const startedAt = Date.now();
-    for (const room of rooms) {
+    for (const zone of zones) {
       if (!active()) return;
       try {
-        await updateRoomSchedule(api, room);
+        await updateZoneSchedule(api, zone);
       } catch (error) {
-        // Skip the room on iCal/HTTP error.
-        log("error", `Error for room ${room.scheduleName}: ${error.message}`);
+        // Skip the zone on iCal/HTTP error.
+        log("error", `Error for zone ${zone.scheduleName}: ${error.message}`);
       }
     }
-    if (logEnabled(conf, "eventTimeCreation")) log("info", `${label}: ${rooms.length} rooms processed in ${(Date.now() - startedAt) / 1000} s`);
+    if (logEnabled(conf, "eventTimeCreation")) log("info", `${label}: ${zones.length} zones processed in ${(Date.now() - startedAt) / 1000} s`);
   }
 
-  async function updateScheduleAV(api, rooms, conf, label) {
+  async function updateScheduleAV(api, zones, conf, label) {
     const offset = conf.scheduleAVInstanceOffset;
     if (logEnabled(conf, "scheduleAVUpdate")) log("info", `${label}: Updating scheduleAV...`);
     const read = await api.post("/services/bacnet/local/objects/read-property-multiple", {
       encode: "text",
-      "property-references": rooms.map((room) => ({ type: "Schedule", instance: room.scheduleID, property: "presentValue" }))
+      "property-references": zones.map((zone) => ({ type: "Schedule", instance: zone.scheduleID, property: "presentValue" }))
     });
 
     const writes = [];
@@ -311,35 +311,35 @@ function createIcalScheduleService({ log = () => {} } = {}) {
   }
 
   /** Stops any running loops, then starts the schedule synchronisation for the given configuration. */
-  async function start({ icalToScheduleConf: conf, rooms: configuredRooms, deviceProfiles, connections }) {
+  async function start({ icalToScheduleConf: conf, zones: configuredZones, deviceProfiles, connections }) {
     const run = ++generation;
     const active = () => run === generation;
-    const data = { icalToScheduleConf: conf, rooms: configuredRooms };
+    const data = { icalToScheduleConf: conf, zones: configuredZones };
 
-    const errors = validateRoomsSchedules(data, { deviceProfiles, connections });
+    const errors = validateZonesSchedules(data, { deviceProfiles, connections });
     if (errors.length) {
-      log("error", `Rooms & Schedules not started: ${errors.map((error) => `${error.path}: ${error.message}`).join(" | ")}`);
+      log("error", `Zones & Schedules not started: ${errors.map((error) => `${error.path}: ${error.message}`).join(" | ")}`);
       return;
     }
-    if (!configuredRooms.length) return;
+    if (!configuredZones.length) return;
 
-    const rooms = resolveRooms(data);
+    const zones = resolveZones(data);
     const groups = new Map();
-    for (const room of rooms) {
-      if (!groups.has(room.connectionName)) groups.set(room.connectionName, { rooms: [], api: createApi(connections[room.connectionName]) });
-      groups.get(room.connectionName).rooms.push(room);
+    for (const zone of zones) {
+      if (!groups.has(zone.connectionName)) groups.set(zone.connectionName, { zones: [], api: createApi(connections[zone.connectionName]) });
+      groups.get(zone.connectionName).zones.push(zone);
     }
 
     try {
       for (const [name, group] of groups) {
         if (!active()) return;
-        log("info", `${name}: creating ${group.rooms.length} schedules, scheduleAV and bindings...`);
-        await setupSchedules(group.api, group.rooms, conf);
-        await setupScheduleAV(group.api, group.rooms, conf);
-        await setupBindings(group.api, group.rooms, conf, deviceProfiles);
+        log("info", `${name}: creating ${group.zones.length} schedules, scheduleAV and bindings...`);
+        await setupSchedules(group.api, group.zones, conf);
+        await setupScheduleAV(group.api, group.zones, conf);
+        await setupBindings(group.api, group.zones, conf, deviceProfiles);
       }
     } catch (error) {
-      log("error", `Rooms & Schedules startup failed: ${error.message}`);
+      log("error", `Zones & Schedules startup failed: ${error.message}`);
       return;
     }
 
@@ -347,10 +347,10 @@ function createIcalScheduleService({ log = () => {} } = {}) {
     log("info", `ScheduleAV will be updated every ${formatDuration(conf.timeBetweenScheduleAVUpdate)}`);
 
     for (const [name, group] of groups) {
-      loop(`${name} schedule update`, conf.timeBetweenScheduleUpdate, active, () => updateAllSchedules(group.api, group.rooms, name, active, conf));
+      loop(`${name} schedule update`, conf.timeBetweenScheduleUpdate, active, () => updateAllSchedules(group.api, group.zones, name, active, conf));
       loop(`${name} scheduleAV update`, conf.timeBetweenScheduleAVUpdate, active, async () => {
         await sleep(1000);
-        if (active()) await updateScheduleAV(group.api, group.rooms, conf, name);
+        if (active()) await updateScheduleAV(group.api, group.zones, conf, name);
       });
     }
   }

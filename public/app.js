@@ -1,13 +1,13 @@
-﻿const state = {
+const state = {
   config: null,
   selectedDevice: null,
   selectedConnection: null,
-  selectedRoom: null,
+  selectedZone: null,
   selectedView: "mqtt",
   expandedDevices: {},
   expandedObjects: {},
   expandedAdvanced: {},
-  expandedRoomDevices: {},
+  expandedZoneDevices: {},
   noticeTimer: null,
   mqttLogId: 0,
   mqttRawId: 0,
@@ -19,7 +19,7 @@ const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, (character
   "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
 }[character]));
 
-function defaultRoomsSchedules() {
+function defaultZonesSchedules() {
   return {
     icalToScheduleConf: {
       timeBetweenScheduleUpdate: 180,
@@ -34,7 +34,7 @@ function defaultRoomsSchedules() {
         weekly: {}
       }
     },
-    rooms: []
+    zones: []
   };
 }
 
@@ -43,7 +43,7 @@ function defaultConfig() {
     deviceProfiles: {},
     connections: {},
     deviceConnections: {},
-    roomsSchedules: defaultRoomsSchedules()
+    zonesSchedules: defaultZonesSchedules()
   };
 }
 
@@ -235,12 +235,12 @@ function renderNavigation() {
   $("[data-select-view='mqtt']").classList.toggle("is-selected", state.selectedView === "mqtt");
   $("#live-logs-button").classList.toggle("is-active", state.selectedView === "log");
   $("[data-select-view='schedule-global']").classList.toggle("is-selected", state.selectedView === "schedule-global");
-  const rooms = state.config.roomsSchedules.rooms;
-  state.selectedRoom = rooms.length ? Math.min(Math.max(state.selectedRoom ?? 0, 0), rooms.length - 1) : null;
-  $("#room-navigation").innerHTML = rooms.map((room, index) => `
-    <button class="device-nav-item${state.selectedView === "room" && index === state.selectedRoom ? " is-selected" : ""}" type="button" data-select-room="${index}">
-      <span class="device-nav-copy"><strong>${escapeHtml(room.scheduleName)}${SCHEDULE_ROWS.flat().every((key) => room[key] === undefined) ? ' <small class="room-default-tag">Default config</small>' : ""}</strong><small>Occ: ${escapeHtml(String(room.valueOccupied ?? state.config.roomsSchedules.icalToScheduleConf.defaults.valueOccupied))} · Unocc: ${escapeHtml(String(room.valueUnOccupied ?? state.config.roomsSchedules.icalToScheduleConf.defaults.valueUnOccupied))}</small></span>
-      <span class="nav-status-dot ${room.excluded ? "is-excluded" : "is-included"}" title="${room.excluded ? "Excluded" : "Included"}" aria-hidden="true"></span>
+  const zones = state.config.zonesSchedules.zones;
+  state.selectedZone = zones.length ? Math.min(Math.max(state.selectedZone ?? 0, 0), zones.length - 1) : null;
+  $("#zone-navigation").innerHTML = zones.map((zone, index) => `
+    <button class="device-nav-item${state.selectedView === "zone" && index === state.selectedZone ? " is-selected" : ""}" type="button" data-select-zone="${index}">
+      <span class="device-nav-copy"><strong>${escapeHtml(zone.scheduleName)}${SCHEDULE_ROWS.flat().every((key) => zone[key] === undefined) ? ' <small class="zone-default-tag">Default config</small>' : ""}</strong><small>Occ: ${escapeHtml(String(zone.valueOccupied ?? state.config.zonesSchedules.icalToScheduleConf.defaults.valueOccupied))} · Unocc: ${escapeHtml(String(zone.valueUnOccupied ?? state.config.zonesSchedules.icalToScheduleConf.defaults.valueUnOccupied))}</small></span>
+      <span class="nav-status-dot ${zone.excluded ? "is-excluded" : "is-included"}" title="${zone.excluded ? "Excluded" : "Included"}" aria-hidden="true"></span>
       <span class="nav-chevron" aria-hidden="true">›</span>
     </button>`).join("");
   $("#connection-navigation").innerHTML = connections.map(([name]) => `
@@ -359,14 +359,14 @@ function renderObject(name, object) {
 
 const TIME_ZONES = ["Europe/Paris", "UTC", "Europe/London", "Europe/Brussels", "Europe/Berlin", "Europe/Madrid", "Europe/Rome", "Europe/Zurich", "America/New_York", "America/Chicago", "America/Los_Angeles", "Asia/Tokyo", "Australia/Sydney"];
 
-// Settings shared by the global defaults and every room (a room only stores the ones it overrides).
+// Settings shared by the global defaults and every zone (a zone only stores the ones it overrides).
 const SCHEDULE_SETTINGS = [
   { key: "groupEvents", kind: "boolean", label: "Merge all daily events into one?" },
   { key: "timeZone", kind: "timezone", label: "Time zone", globalLabel: "Default time zone" },
   { key: "eventsToDiscard", kind: "list", label: "Event names to discard", globalLabel: "Default event names to discard" },
   { key: "minimumSlotDuration", kind: "number", min: 0, label: "Minimum event duration (minutes)" },
-  { key: "valueOccupied", kind: "number", label: "Value when the room is occupied", globalLabel: "Default value when the room is OCCUPIED" },
-  { key: "valueUnOccupied", kind: "number", label: "Value when the room is unoccupied", globalLabel: "Default value when the room is UNOCCUPIED" },
+  { key: "valueOccupied", kind: "number", label: "Value when the zone is occupied", globalLabel: "Default value when the zone is OCCUPIED" },
+  { key: "valueUnOccupied", kind: "number", label: "Value when the zone is unoccupied", globalLabel: "Default value when the zone is UNOCCUPIED" },
   { key: "timeOffsetBeforeStart", kind: "number", min: 0, groupedOnly: true, label: "Start earlier by (minutes)" },
   { key: "timeOffsetBeforeEnd", kind: "number", min: 0, groupedOnly: true, label: "End earlier by (minutes)" },
   { key: "nbrDaysPreview", kind: "number", min: 1, step: 1, label: "Number of days to anticipate", globalLabel: "Default number of days to anticipate" },
@@ -452,7 +452,7 @@ function downlinkObjectNames(deviceProfile) {
 }
 
 function renderScheduleGlobal() {
-  const conf = state.config.roomsSchedules.icalToScheduleConf;
+  const conf = state.config.zonesSchedules.icalToScheduleConf;
   const [first, last] = conf.scheduleInstanceRange;
   const confField = (label, path, value, options = {}) => inputField(label, path, value, { type: "number", step: 1, ...options }).replace("data-path=", "data-schedule-conf=");
   const grouped = conf.defaults.groupEvents === true;
@@ -464,7 +464,7 @@ function renderScheduleGlobal() {
     </div>
     <div class="subsection-heading debug-heading"><div><h3>Schedule instance number range</h3></div></div>
     <div class="field-grid"><div class="field-pair">${confField("First instance number", "scheduleInstanceRange.0", first, { min: 0 })}${confField("Last instance number", "scheduleInstanceRange.1", last, { min: 0 })}</div></div>
-    <div class="subsection-heading debug-heading"><div><h3>Default room settings</h3></div></div>
+    <div class="subsection-heading debug-heading"><div><h3>Default zone settings</h3></div></div>
     <div class="field-grid">${scheduleSettingRows(SCHEDULE_ROWS.filter((row) => row !== OCCUPANCY_ROW && row !== OFFSET_ROW), valueOf, "data-schedule-default", true, grouped)}</div>`;
   $("#schedule-global-editor").innerHTML = `
     <div class="section-heading"><div><h2>Basic settings</h2></div></div>
@@ -477,37 +477,37 @@ function renderScheduleGlobal() {
     ${advancedPanel("global", advanced)}`;
 }
 
-function renderRoom() {
-  const container = $("#room-editor");
-  const { icalToScheduleConf: { defaults }, rooms } = state.config.roomsSchedules;
-  const room = rooms[state.selectedRoom];
-  if (!room) {
-    container.innerHTML = `<div class="empty-state"><div class="empty-symbol" aria-hidden="true">+</div><h2>No rooms yet</h2><p>Add a room to synchronise its agenda with a BACnet schedule.</p><button class="button button-primary" type="button" data-action="add-room">Add room</button></div>`;
+function renderZone() {
+  const container = $("#zone-editor");
+  const { icalToScheduleConf: { defaults }, zones } = state.config.zonesSchedules;
+  const zone = zones[state.selectedZone];
+  if (!zone) {
+    container.innerHTML = `<div class="empty-state"><div class="empty-symbol" aria-hidden="true">+</div><h2>No zones yet</h2><p>Add a zone to synchronise its agenda with a BACnet schedule.</p><button class="button button-primary" type="button" data-action="add-zone">Add zone</button></div>`;
     return;
   }
 
-  const roomField = (html) => html.replace("data-path=", "data-room-field=");
+  const zoneField = (html) => html.replace("data-path=", "data-zone-field=");
   const connectionNames = Object.keys(state.config.connections);
-  if (room.connectionName && !connectionNames.includes(room.connectionName)) connectionNames.push(room.connectionName);
+  if (zone.connectionName && !connectionNames.includes(zone.connectionName)) connectionNames.push(zone.connectionName);
   const connectionOptions = [["", "Select a BMS connection"], ...connectionNames.map((name) => [name, name])];
-  const grouped = (room.groupEvents ?? defaults.groupEvents) === true;
+  const grouped = (zone.groupEvents ?? defaults.groupEvents) === true;
   const deviceProfiles = Object.keys(state.config.deviceProfiles);
 
-  const deviceRows = Object.entries(room.devices).map(([profileName, device]) => {
+  const deviceRows = Object.entries(zone.devices).map(([profileName, device]) => {
     const profileNames = deviceProfiles.includes(profileName) ? deviceProfiles : [profileName, ...deviceProfiles];
     const downlinkNames = downlinkObjectNames(profileName);
     if (device.AVToBindName && !downlinkNames.includes(device.AVToBindName)) downlinkNames.push(device.AVToBindName);
-    const deviceField = (html) => html.replace("data-path=", "data-room-device-field=");
-    const deviceExpanded = Boolean(state.expandedRoomDevices[`${state.selectedRoom}::${profileName}`]);
+    const deviceField = (html) => html.replace("data-path=", "data-zone-device-field=");
+    const deviceExpanded = Boolean(state.expandedZoneDevices[`${state.selectedZone}::${profileName}`]);
     const deviceNumbers = device.deviceNums || [];
-    return `<article class="object-card${deviceExpanded ? " is-expanded" : ""}" data-room-device="${escapeHtml(profileName)}">
+    return `<article class="object-card${deviceExpanded ? " is-expanded" : ""}" data-zone-device="${escapeHtml(profileName)}">
       <div class="object-card-heading">
-        <button class="panel-toggle object-panel-toggle" type="button" data-panel-toggle="roomDevice" data-device-profile="${escapeHtml(profileName)}" aria-expanded="${deviceExpanded}">
+        <button class="panel-toggle object-panel-toggle" type="button" data-panel-toggle="zoneDevice" data-device-profile="${escapeHtml(profileName)}" aria-expanded="${deviceExpanded}">
           <span class="panel-chevron" aria-hidden="true">${deviceExpanded ? "−" : "+"}</span>
           <span class="object-title"><span class="object-type-mark mark-down" aria-hidden="true">↓</span><span class="object-title-copy"><strong>${escapeHtml(profileName)}</strong><small>${escapeHtml(device.AVToBindName || "No object selected")}</small></span></span>
-          <span class="panel-summary-count room-device-numbers">Device: ${escapeHtml(deviceNumbers.join(", ") || "none")}</span>
+          <span class="panel-summary-count zone-device-numbers">Device: ${escapeHtml(deviceNumbers.join(", ") || "none")}</span>
         </button>
-        <button class="button button-danger-quiet button-compact" type="button" data-action="delete-room-device" data-device-profile="${escapeHtml(profileName)}">Remove</button>
+        <button class="button button-danger-quiet button-compact" type="button" data-action="delete-zone-device" data-device-profile="${escapeHtml(profileName)}">Remove</button>
       </div>
       <div class="object-card-body"${deviceExpanded ? "" : " hidden"}><div class="field-grid">
         <div class="field-row">${deviceField(selectField("LoRaWAN device profile", "profile", profileName, profileNames.map((name) => [name, name])))}</div>
@@ -518,69 +518,69 @@ function renderRoom() {
   }).join("");
 
   container.innerHTML = `
-    <div class="section-heading device-heading"><div><h2>Room</h2></div></div>
-    <section class="config-section schedule-section${room.excluded ? " is-room-excluded" : ""}">
-      <div class="section-heading"><div><h2>Basic settings</h2></div>      <div class="heading-actions"><button class="button button-outline button-small" type="button" data-action="reset-room-defaults">Set default</button><button class="button button-outline button-small" type="button" data-action="toggle-room-excluded">${room.excluded ? "Include" : "Exclude"}</button><button class="button button-danger-quiet button-small" type="button" data-action="delete-room">Remove</button></div></div>
+    <div class="section-heading device-heading"><div><h2>Zone</h2></div></div>
+    <section class="config-section schedule-section${zone.excluded ? " is-zone-excluded" : ""}">
+      <div class="section-heading"><div><h2>Basic settings</h2></div>      <div class="heading-actions"><button class="button button-outline button-small" type="button" data-action="reset-zone-defaults">Set default</button><button class="button button-outline button-small" type="button" data-action="toggle-zone-excluded">${zone.excluded ? "Include" : "Exclude"}</button><button class="button button-danger-quiet button-small" type="button" data-action="delete-zone">Remove</button></div></div>
       <div class="field-grid">
-        <div class="field-row">${roomField(inputField("Room / schedule name", "scheduleName", room.scheduleName))}</div>
-        <div class="field-row">${roomField(selectField("On which BMS will be BACnet schedule object?", "connectionName", room.connectionName || "", connectionOptions))}</div>
-        <div class="field-row"><div class="room-url-test">${roomField(inputField("iCal URL", "url", room.url, { placeholder: "https://" }))}<button class="button button-primary" type="button" data-action="test-ical">Test</button></div></div>
+        <div class="field-row">${zoneField(inputField("Zone / schedule name", "scheduleName", zone.scheduleName))}</div>
+        <div class="field-row">${zoneField(selectField("On which BMS will be BACnet schedule object?", "connectionName", zone.connectionName || "", connectionOptions))}</div>
+        <div class="field-row"><div class="zone-url-test">${zoneField(inputField("iCal URL", "url", zone.url, { placeholder: "https://" }))}<button class="button button-primary" type="button" data-action="test-ical">Test</button></div></div>
       </div>
-      ${advancedPanel(`room:${state.selectedRoom}`, `<div class="field-grid">${scheduleSettingRows(SCHEDULE_ROWS, (key) => room[key] ?? defaults[key], "data-room-field", false, grouped)}</div>`)}
+      ${advancedPanel(`zone:${state.selectedZone}`, `<div class="field-grid">${scheduleSettingRows(SCHEDULE_ROWS, (key) => zone[key] ?? defaults[key], "data-zone-field", false, grouped)}</div>`)}
     </section>
-    <div class="room-devices${room.excluded ? " is-room-excluded" : ""}">
-    <div class="objects-heading"><div><h2>Devices <span class="object-count">${Object.keys(room.devices).length}</span></h2></div><button class="button button-outline" type="button" data-action="add-room-device">+ Add device</button></div>
-    <div class="object-list">${deviceRows || `<div class="empty-objects">No device yet. Add the LoRaWAN devices controlled by this room schedule.</div>`}</div></div>`;
+    <div class="zone-devices${zone.excluded ? " is-zone-excluded" : ""}">
+    <div class="objects-heading"><div><h2>Devices <span class="object-count">${Object.keys(zone.devices).length}</span></h2></div><button class="button button-outline" type="button" data-action="add-zone-device">+ Add device</button></div>
+    <div class="object-list">${deviceRows || `<div class="empty-objects">No device yet. Add the LoRaWAN devices controlled by this zone schedule.</div>`}</div></div>`;
 }
 
-function handleRoomField(input) {
-  const { rooms } = state.config.roomsSchedules;
-  const room = rooms[state.selectedRoom];
-  const key = input.dataset.roomField;
+function handleZoneField(input) {
+  const { zones } = state.config.zonesSchedules;
+  const zone = zones[state.selectedZone];
+  const key = input.dataset.zoneField;
   if (key === "scheduleName") {
     const name = input.value.trim();
-    if (!name || /\s/.test(name) || rooms.some((other, index) => index !== state.selectedRoom && other.scheduleName === name)) {
-      showNotice("Room names must be unique and cannot be empty or contain spaces.", "error");
+    if (!name || /\s/.test(name) || zones.some((other, index) => index !== state.selectedZone && other.scheduleName === name)) {
+      showNotice("Zone names must be unique and cannot be empty or contain spaces.", "error");
       render();
       return;
     }
-    room.scheduleName = name;
+    zone.scheduleName = name;
   } else if (key === "url") {
-    room.url = input.value.trim();
-    input.value = room.url;
+    zone.url = input.value.trim();
+    input.value = zone.url;
     return;
   } else if (key === "connectionName") {
-    room[key] = input.value.trim();
+    zone[key] = input.value.trim();
   } else {
-    applyScheduleSetting(room, input, key);
+    applyScheduleSetting(zone, input, key);
     return;
   }
   render();
 }
 
-function handleRoomDeviceField(input) {
-  const room = state.config.roomsSchedules.rooms[state.selectedRoom];
-  const profileName = input.closest("[data-room-device]").dataset.roomDevice;
-  const field = input.dataset.roomDeviceField;
+function handleZoneDeviceField(input) {
+  const zone = state.config.zonesSchedules.zones[state.selectedZone];
+  const profileName = input.closest("[data-zone-device]").dataset.zoneDevice;
+  const field = input.dataset.zoneDeviceField;
   if (field === "profile") {
     const newProfileName = input.value;
     if (newProfileName !== profileName) {
-      if (Object.hasOwn(room.devices, newProfileName)) {
-        showNotice(`Device profile '${newProfileName}' is already in this room.`, "error");
+      if (Object.hasOwn(zone.devices, newProfileName)) {
+        showNotice(`Device profile '${newProfileName}' is already in this zone.`, "error");
       } else {
-        room.devices = Object.fromEntries(Object.entries(room.devices).map(([key, value]) => (key === profileName
+        zone.devices = Object.fromEntries(Object.entries(zone.devices).map(([key, value]) => (key === profileName
           ? [newProfileName, { deviceNums: value.deviceNums, AVToBindName: downlinkObjectNames(newProfileName)[0] || "" }]
           : [key, value])));
-        state.expandedRoomDevices[`${state.selectedRoom}::${newProfileName}`] = state.expandedRoomDevices[`${state.selectedRoom}::${profileName}`];
-        delete state.expandedRoomDevices[`${state.selectedRoom}::${profileName}`];
+        state.expandedZoneDevices[`${state.selectedZone}::${newProfileName}`] = state.expandedZoneDevices[`${state.selectedZone}::${profileName}`];
+        delete state.expandedZoneDevices[`${state.selectedZone}::${profileName}`];
       }
     }
   } else if (field === "deviceNums") {
     const numbers = input.value.split(",").map((item) => item.trim()).filter(Boolean).map(Number);
     if (numbers.some((number) => !Number.isInteger(number) || number < 1)) showNotice("Device numbers must be whole numbers greater than 0, separated by commas.", "error");
-    else room.devices[profileName].deviceNums = numbers;
+    else zone.devices[profileName].deviceNums = numbers;
   } else {
-    room.devices[profileName].AVToBindName = input.value;
+    zone.devices[profileName].AVToBindName = input.value;
   }
   render();
 }
@@ -590,20 +590,20 @@ function render() {
   renderGlobal();
   renderDevice();
   renderScheduleGlobal();
-  renderRoom();
+  renderZone();
   const view = state.selectedView;
   $(".global-section").hidden = view !== "global";
   $("#device-editor").hidden = view !== "device";
   $("#schedule-global-editor").hidden = view !== "schedule-global";
-  $("#room-editor").hidden = view !== "room";
+  $("#zone-editor").hidden = view !== "zone";
   $("#mqtt-section").hidden = view !== "mqtt";
   $("#log-section").hidden = view !== "log";
   const pages = {
     global: [state.selectedConnection || "BMS connections"],
     mqtt: ["MQTT connection"],
     log: ["Message log", ""],
-    "schedule-global": ["Rooms & Schedules", "Global configuration"],
-    room: [state.config.roomsSchedules.rooms[state.selectedRoom]?.scheduleName || "Rooms & Schedules", "Specific configuration for this room "],
+    "schedule-global": ["Zones & Schedules", "Global configuration"],
+    zone: [state.config.zonesSchedules.zones[state.selectedZone]?.scheduleName || "Zones & Schedules", "Specific configuration for this zone "],
     device: ["LoRaWAN to BACnet configuration"]
   };
   [$("#page-title").textContent, $("#page-description").textContent] = pages[view];
@@ -723,24 +723,24 @@ function setConnectionValue(path, value) {
   render();
 }
 
-// The editor keeps every room in one list with an excluded flag; the stored
-// format keeps included rooms in `rooms` and excluded ones in `excludedRooms`.
-function splitRooms(roomsSchedules) {
-  const rooms = roomsSchedules.rooms || [];
+// The editor keeps every zone in one list with an excluded flag; the stored
+// format keeps included zones in `zones` and excluded ones in `excludedZones`.
+function splitZones(zonesSchedules) {
+  const zones = zonesSchedules.zones || [];
   return {
-    ...roomsSchedules,
-    rooms: rooms.filter((room) => room.excluded !== true).map((room) => ({ ...room, excluded: false })),
-    excludedRooms: rooms.filter((room) => room.excluded === true).map((room) => ({ ...room, excluded: true }))
+    ...zonesSchedules,
+    zones: zones.filter((zone) => zone.excluded !== true).map((zone) => ({ ...zone, excluded: false })),
+    excludedZones: zones.filter((zone) => zone.excluded === true).map((zone) => ({ ...zone, excluded: true }))
   };
 }
 
-function mergeRooms(roomsSchedules) {
-  const { excludedRooms = [], rooms = [], ...rest } = roomsSchedules;
+function mergeZones(zonesSchedules) {
+  const { excludedZones = [], zones = [], ...rest } = zonesSchedules;
   return {
     ...rest,
-    rooms: [
-      ...rooms.map((room) => ({ ...room, excluded: false })),
-      ...excludedRooms.map((room) => ({ ...room, excluded: true }))
+    zones: [
+      ...zones.map((zone) => ({ ...zone, excluded: false })),
+      ...excludedZones.map((zone) => ({ ...zone, excluded: true }))
     ]
   };
 }
@@ -748,9 +748,9 @@ function mergeRooms(roomsSchedules) {
 function downloadConfig() {
   syncAssignedConnections();
   const files = [
-    ["deviceProfiles.json", state.config.deviceProfiles],
+    ["device-profiles.json", state.config.deviceProfiles],
     ["mqtt-connections.json", readMqttForm()],
-    ["rooms-schedules.json", splitRooms(state.config.roomsSchedules)],
+    ["zones-schedules.json", splitZones(state.config.zonesSchedules)],
     ["bms-connections.json", {
       "bms-connections": state.config.connections,
       deviceConnections: state.config.deviceConnections
@@ -892,7 +892,7 @@ async function saveConfig() {
   const response = await fetch("/api/config", {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ ...state.config, roomsSchedules: splitRooms(state.config.roomsSchedules) })
+    body: JSON.stringify({ ...state.config, zonesSchedules: splitZones(state.config.zonesSchedules) })
   });
   const result = await response.json();
   if (!response.ok) {
@@ -921,9 +921,9 @@ async function loadConfig() {
     state.config.connections ||= {};
     state.config.deviceConnections ||= {};
     state.config.deviceProfiles ||= {};
-    state.config.roomsSchedules = mergeRooms(state.config.roomsSchedules || defaultRoomsSchedules());
-    const scheduleConf = state.config.roomsSchedules.icalToScheduleConf;
-    scheduleConf.logs = { ...defaultRoomsSchedules().icalToScheduleConf.logs, ...scheduleConf.logs };
+    state.config.zonesSchedules = mergeZones(state.config.zonesSchedules || defaultZonesSchedules());
+    const scheduleConf = state.config.zonesSchedules.icalToScheduleConf;
+    scheduleConf.logs = { ...defaultZonesSchedules().icalToScheduleConf.logs, ...scheduleConf.logs };
     for (const deviceName of Object.keys(state.config.deviceProfiles)) state.config.deviceConnections[deviceName] ||= "";
   } catch (error) {
     state.config = defaultConfig();
@@ -1129,24 +1129,24 @@ document.addEventListener("change", (event) => {
     return;
   }
   if (input.matches("#schedule-global-editor [data-schedule-conf]")) {
-    setPath(state.config.roomsSchedules.icalToScheduleConf, input.dataset.scheduleConf, inputValue(input));
+    setPath(state.config.zonesSchedules.icalToScheduleConf, input.dataset.scheduleConf, inputValue(input));
     render();
     return;
   }
   if (input.matches("#schedule-global-editor [data-schedule-log]")) {
-    state.config.roomsSchedules.icalToScheduleConf.logs[input.dataset.scheduleLog] = input.checked;
+    state.config.zonesSchedules.icalToScheduleConf.logs[input.dataset.scheduleLog] = input.checked;
     return;
   }
   if (input.matches("#schedule-global-editor [data-schedule-default]")) {
-    applyScheduleSetting(state.config.roomsSchedules.icalToScheduleConf.defaults, input, input.dataset.scheduleDefault);
+    applyScheduleSetting(state.config.zonesSchedules.icalToScheduleConf.defaults, input, input.dataset.scheduleDefault);
     return;
   }
-  if (input.matches("#room-editor [data-room-field]")) {
-    handleRoomField(input);
+  if (input.matches("#zone-editor [data-zone-field]")) {
+    handleZoneField(input);
     return;
   }
-  if (input.matches("#room-editor [data-room-device-field]")) {
-    handleRoomDeviceField(input);
+  if (input.matches("#zone-editor [data-zone-device-field]")) {
+    handleZoneDeviceField(input);
     return;
   }
 
@@ -1234,8 +1234,8 @@ document.addEventListener("click", async (event) => {
       state.expandedAdvanced[panelToggle.dataset.advancedKey] = expanded;
       panelToggle.closest(".device-card").querySelector(".device-card-body").hidden = !expanded;
       panelToggle.closest(".device-card").classList.toggle("is-expanded", expanded);
-    } else if (panelToggle.dataset.panelToggle === "roomDevice") {
-      state.expandedRoomDevices[`${state.selectedRoom}::${panelToggle.dataset.deviceProfile}`] = expanded;
+    } else if (panelToggle.dataset.panelToggle === "zoneDevice") {
+      state.expandedZoneDevices[`${state.selectedZone}::${panelToggle.dataset.deviceProfile}`] = expanded;
       panelToggle.closest(".object-card").querySelector(".object-card-body").hidden = !expanded;
       panelToggle.closest(".object-card").classList.toggle("is-expanded", expanded);
     } else if (panelToggle.dataset.panelToggle === "device") {
@@ -1260,10 +1260,10 @@ document.addEventListener("click", async (event) => {
     return;
   }
 
-  const roomButton = event.target.closest("[data-select-room]");
-  if (roomButton) {
-    state.selectedRoom = Number(roomButton.dataset.selectRoom);
-    state.selectedView = "room";
+  const zoneButton = event.target.closest("[data-select-zone]");
+  if (zoneButton) {
+    state.selectedZone = Number(zoneButton.dataset.selectZone);
+    state.selectedView = "zone";
     render();
     return;
   }
@@ -1335,15 +1335,15 @@ document.addEventListener("click", async (event) => {
         break;
       }
       case "test-ical": {
-        const room = state.config.roomsSchedules.rooms[state.selectedRoom];
-        if (!room) break;
+        const zone = state.config.zonesSchedules.zones[state.selectedZone];
+        if (!zone) break;
         actionButton.disabled = true;
         showNotice("Testing iCalendar URL…", "success");
         try {
-          const response = await fetch("/api/rooms/test-ical", {
+          const response = await fetch("/api/zones/test-ical", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ url: room.url })
+            body: JSON.stringify({ url: zone.url })
           });
           const result = await response.json();
           if (!response.ok) throw new Error(result.error || "iCalendar URL test failed.");
@@ -1368,53 +1368,53 @@ document.addEventListener("click", async (event) => {
           state.selectedConnection = Object.keys(state.config.connections)[0] || null;
         }
         break;
-      case "add-room": {
-        const { rooms } = state.config.roomsSchedules;
-        let index = rooms.length + 1;
-        while (rooms.some((room) => room.scheduleName === `room-${index}`)) index += 1;
-        rooms.push({ scheduleName: `room-${index}`, connectionName: Object.keys(state.config.connections)[0] || "", url: "", excluded: false, devices: {} });
-        state.selectedRoom = rooms.length - 1;
-        state.selectedView = "room";
+      case "add-zone": {
+        const { zones } = state.config.zonesSchedules;
+        let index = zones.length + 1;
+        while (zones.some((zone) => zone.scheduleName === `zone-${index}`)) index += 1;
+        zones.push({ scheduleName: `zone-${index}`, connectionName: Object.keys(state.config.connections)[0] || "", url: "", excluded: false, devices: {} });
+        state.selectedZone = zones.length - 1;
+        state.selectedView = "zone";
         break;
       }
-      case "reset-room-defaults": {
-        const room = state.config.roomsSchedules.rooms[state.selectedRoom];
-        if (!room) break;
-        // Rooms only store overrides; removing them makes the room inherit the global defaults.
-        for (const key of SCHEDULE_ROWS.flat()) delete room[key];
-        showNotice(`Room '${room.scheduleName}' now uses the global defaults.`);
+      case "reset-zone-defaults": {
+        const zone = state.config.zonesSchedules.zones[state.selectedZone];
+        if (!zone) break;
+        // Zones only store overrides; removing them makes the zone inherit the global defaults.
+        for (const key of SCHEDULE_ROWS.flat()) delete zone[key];
+        showNotice(`Zone '${zone.scheduleName}' now uses the global defaults.`);
         break;
       }
-      case "toggle-room-excluded": {
-        const room = state.config.roomsSchedules.rooms[state.selectedRoom];
-        if (room) room.excluded = !room.excluded;
+      case "toggle-zone-excluded": {
+        const zone = state.config.zonesSchedules.zones[state.selectedZone];
+        if (zone) zone.excluded = !zone.excluded;
         break;
       }
-      case "delete-room": {
-        const { rooms } = state.config.roomsSchedules;
-        const room = rooms[state.selectedRoom];
-        if (room && confirm(`Remove room '${room.scheduleName}'?`)) {
-          rooms.splice(state.selectedRoom, 1);
-          // Expansion state is keyed by room position, which has just shifted.
-          state.expandedRoomDevices = {};
-          for (const key of Object.keys(state.expandedAdvanced)) if (key.startsWith("room:")) delete state.expandedAdvanced[key];
+      case "delete-zone": {
+        const { zones } = state.config.zonesSchedules;
+        const zone = zones[state.selectedZone];
+        if (zone && confirm(`Remove zone '${zone.scheduleName}'?`)) {
+          zones.splice(state.selectedZone, 1);
+          // Expansion state is keyed by zone position, which has just shifted.
+          state.expandedZoneDevices = {};
+          for (const key of Object.keys(state.expandedAdvanced)) if (key.startsWith("zone:")) delete state.expandedAdvanced[key];
         }
         break;
       }
-      case "add-room-device": {
-        const room = state.config.roomsSchedules.rooms[state.selectedRoom];
-        const profileName = Object.keys(state.config.deviceProfiles).find((name) => !Object.hasOwn(room.devices, name));
+      case "add-zone-device": {
+        const zone = state.config.zonesSchedules.zones[state.selectedZone];
+        const profileName = Object.keys(state.config.deviceProfiles).find((name) => !Object.hasOwn(zone.devices, name));
         if (!profileName) {
-          showNotice("All LoRaWAN device profiles are already in this room, or none exists yet.", "error");
+          showNotice("All LoRaWAN device profiles are already in this zone, or none exists yet.", "error");
           break;
         }
-        room.devices[profileName] = { deviceNums: [], AVToBindName: downlinkObjectNames(profileName)[0] || "" };
-        state.expandedRoomDevices[`${state.selectedRoom}::${profileName}`] = true;
+        zone.devices[profileName] = { deviceNums: [], AVToBindName: downlinkObjectNames(profileName)[0] || "" };
+        state.expandedZoneDevices[`${state.selectedZone}::${profileName}`] = true;
         break;
       }
-      case "delete-room-device":
-        delete state.config.roomsSchedules.rooms[state.selectedRoom].devices[actionButton.dataset.deviceProfile];
-        delete state.expandedRoomDevices[`${state.selectedRoom}::${actionButton.dataset.deviceProfile}`];
+      case "delete-zone-device":
+        delete state.config.zonesSchedules.zones[state.selectedZone].devices[actionButton.dataset.deviceProfile];
+        delete state.expandedZoneDevices[`${state.selectedZone}::${actionButton.dataset.deviceProfile}`];
         break;
       case "add-object": {
         const base = "object";
@@ -1494,9 +1494,9 @@ $("#import-file").addEventListener("change", async (event) => {
     const imported = {};
     for (const [index, file] of importedFiles.entries()) {
       let kind;
-      if (file.filename === "deviceprofiles.json" || file.filename === "devicelist.json") kind = "deviceProfiles";
+      if (file.filename === "device-profiles.json" || file.filename === "deviceprofiles.json" || file.filename === "devicelist.json") kind = "deviceProfiles";
       else if (file.filename === "mqtt-connections.json" || file.filename === "mqtt-connection.json") kind = "mqtt";
-      else if (file.filename === "rooms-schedules.json") kind = "roomsSchedules";
+      else if (file.filename === "zones-schedules.json") kind = "zonesSchedules";
       else if (file.filename === "bms-connections.json" || file.filename === "connections.json") kind = "bmsConnections";
       else if (files.length === 1 || file.value?.deviceProfiles) kind = "deviceProfiles";
       else throw new Error(`Unrecognized configuration file: ${files[index].name}`);
@@ -1537,16 +1537,16 @@ $("#import-file").addEventListener("change", async (event) => {
       candidate.deviceConnections[deviceName] = connectionName;
       applyConnection(device, candidate.connections[connectionName], connectionName);
     }
-    if (imported.roomsSchedules !== undefined) {
-      if (!imported.roomsSchedules || typeof imported.roomsSchedules !== "object" || Array.isArray(imported.roomsSchedules)) {
-        throw new Error("Expected a rooms-schedules JSON object.");
+    if (imported.zonesSchedules !== undefined) {
+      if (!imported.zonesSchedules || typeof imported.zonesSchedules !== "object" || Array.isArray(imported.zonesSchedules)) {
+        throw new Error("Expected a zones-schedules JSON object.");
       }
-      candidate.roomsSchedules = mergeRooms(imported.roomsSchedules);
+      candidate.zonesSchedules = mergeZones(imported.zonesSchedules);
     }
-    if (candidate.roomsSchedules.icalToScheduleConf && typeof candidate.roomsSchedules.icalToScheduleConf === "object") {
-      candidate.roomsSchedules.icalToScheduleConf.logs = {
-        ...defaultRoomsSchedules().icalToScheduleConf.logs,
-        ...candidate.roomsSchedules.icalToScheduleConf.logs
+    if (candidate.zonesSchedules.icalToScheduleConf && typeof candidate.zonesSchedules.icalToScheduleConf === "object") {
+      candidate.zonesSchedules.icalToScheduleConf.logs = {
+        ...defaultZonesSchedules().icalToScheduleConf.logs,
+        ...candidate.zonesSchedules.icalToScheduleConf.logs
       };
     }
     const mqttSettings = imported.mqtt;
@@ -1557,10 +1557,10 @@ $("#import-file").addEventListener("change", async (event) => {
       throw new Error("MQTT autoConnect must be a boolean.");
     }
 
-    const validation = await fetch("/api/config/validate?roomsSchedules=true", {
+    const validation = await fetch("/api/config/validate?zonesSchedules=true", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...candidate, roomsSchedules: splitRooms(candidate.roomsSchedules) })
+      body: JSON.stringify({ ...candidate, zonesSchedules: splitZones(candidate.zonesSchedules) })
     });
     const validationResult = await validation.json();
     if (!validation.ok) {

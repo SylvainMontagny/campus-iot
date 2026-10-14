@@ -1,6 +1,6 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { createDefaultRoomsSchedules, validateRoomsSchedules, resolveRooms, applyAdeUrlSuffix, findDuplicateIcalUrls } = require("../src/rooms-config");
+const { createDefaultZonesSchedules, validateZonesSchedules, resolveZones, applyAdeUrlSuffix, findDuplicateIcalUrls } = require("../src/zones-config");
 const { buildSpecialEvents } = require("../src/ical-schedule");
 
 const deviceProfiles = {
@@ -11,33 +11,33 @@ const deviceProfiles = {
 };
 const connections = { bms: { protocol: "restAPIBacnet", ipAddress: "192.168.1.10" } };
 
-function makeData(room = {}) {
-  const data = createDefaultRoomsSchedules();
-  data.rooms.push({
+function makeData(zone = {}) {
+  const data = createDefaultZonesSchedules();
+  data.zones.push({
     scheduleName: "8D-120", connectionName: "bms", url: "https://example.org/a.ics",
-    devices: { valve: { deviceNums: [1, 2], AVToBindName: "setpoint" } }, ...room
+    devices: { valve: { deviceNums: [1, 2], AVToBindName: "setpoint" } }, ...zone
   });
   return data;
 }
 
-test("a complete room configuration is valid", () => {
-  assert.deepEqual(validateRoomsSchedules(makeData(), { deviceProfiles, connections }), []);
+test("a complete zone configuration is valid", () => {
+  assert.deepEqual(validateZonesSchedules(makeData(), { deviceProfiles, connections }), []);
 });
 
-test("invalid rooms are reported with their path", () => {
+test("invalid zones are reported with their path", () => {
   const data = makeData({ connectionName: "missing", devices: { valve: { deviceNums: [11], AVToBindName: "temperature" } } });
-  const paths = validateRoomsSchedules(data, { deviceProfiles, connections }).map((error) => error.path);
+  const paths = validateZonesSchedules(data, { deviceProfiles, connections }).map((error) => error.path);
   assert.deepEqual(paths.sort(), [
-    "roomsSchedules.rooms.0.connectionName",
-    "roomsSchedules.rooms.0.devices.valve.AVToBindName",
-    "roomsSchedules.rooms.0.devices.valve.deviceNums"
+    "zonesSchedules.zones.0.connectionName",
+    "zonesSchedules.zones.0.devices.valve.AVToBindName",
+    "zonesSchedules.zones.0.devices.valve.deviceNums"
   ]);
 });
 
-test("device numbers cannot be shared between rooms", () => {
+test("device numbers cannot be shared between zones", () => {
   const data = makeData();
-  data.rooms.push({ ...structuredClone(data.rooms[0]), scheduleName: "8D-121" });
-  const errors = validateRoomsSchedules(data, { deviceProfiles, connections });
+  data.zones.push({ ...structuredClone(data.zones[0]), scheduleName: "8D-121" });
+  const errors = validateZonesSchedules(data, { deviceProfiles, connections });
   assert.equal(errors.length, 1);
   assert.match(errors[0].message, /more than once/);
 });
@@ -45,18 +45,18 @@ test("device numbers cannot be shared between rooms", () => {
 test("log options must be booleans", () => {
   const data = makeData();
   data.icalToScheduleConf.logs.scheduleAVUpdate = "yes";
-  const errors = validateRoomsSchedules(data, { deviceProfiles, connections });
-  assert.deepEqual(errors.map((error) => error.path), ["roomsSchedules.icalToScheduleConf.logs"]);
+  const errors = validateZonesSchedules(data, { deviceProfiles, connections });
+  assert.deepEqual(errors.map((error) => error.path), ["zonesSchedules.icalToScheduleConf.logs"]);
 });
 
-test("rooms inherit the global defaults and get consecutive schedule instances", () => {
+test("zones inherit the global defaults and get consecutive schedule instances", () => {
   const data = makeData({ valueOccupied: 21 });
   data.icalToScheduleConf.scheduleInstanceRange = [5, 50];
-  const [room] = resolveRooms(data);
-  assert.equal(room.scheduleID, 5);
-  assert.equal(room.valueOccupied, 21);
-  assert.equal(room.valueUnOccupied, 15);
-  assert.equal(room.timeZone, "Europe/Paris");
+  const [zone] = resolveZones(data);
+  assert.equal(zone.scheduleID, 5);
+  assert.equal(zone.valueOccupied, 21);
+  assert.equal(zone.valueUnOccupied, 15);
+  assert.equal(zone.timeZone, "Europe/Paris");
 });
 
 test("ADE suffix is appended or replaced only when enabled", () => {
@@ -67,31 +67,31 @@ test("ADE suffix is appended or replaced only when enabled", () => {
   assert.equal(applyAdeUrlSuffix({ ...base, addSuffixToAdeURL: false, url: "https://x/a" }, now), "https://x/a");
 });
 
-test("resolveRooms applies the ADE suffix from the defaults", () => {
+test("resolveZones applies the ADE suffix from the defaults", () => {
   const data = makeData({ url: "https://x/a?b=1" });
   data.icalToScheduleConf.defaults.addSuffixToAdeURL = true;
-  const [room] = resolveRooms(data);
-  assert.match(room.url, /^https:\/\/x\/a\?b=1&lastDate=\d{4}-\d{2}-\d{2}$/);
+  const [zone] = resolveZones(data);
+  assert.match(zone.url, /^https:\/\/x\/a\?b=1&lastDate=\d{4}-\d{2}-\d{2}$/);
 });
 
-test("rooms sharing an iCal URL are reported by name", () => {
-  const rooms = [
+test("zones sharing an iCal URL are reported by name", () => {
+  const zones = [
     { scheduleName: "A", url: "https://x/a.ics" },
     { scheduleName: "B", url: " https://x/a.ics" },
     { scheduleName: "C", url: "https://x/c.ics" }
   ];
-  assert.deepEqual(findDuplicateIcalUrls(rooms), ["Rooms A, B use the same iCal URL: https://x/a.ics"]);
-  assert.deepEqual(findDuplicateIcalUrls(rooms.slice(1)), []);
+  assert.deepEqual(findDuplicateIcalUrls(zones), ["Zones A, B use the same iCal URL: https://x/a.ics"]);
+  assert.deepEqual(findDuplicateIcalUrls(zones.slice(1)), []);
 });
 
 test("grouped events are merged per day with the configured offsets", () => {
-  const room = { ...resolveRooms(makeData())[0], groupEvents: true, timeOffsetBeforeStart: 60, timeOffsetBeforeEnd: 30, eventsToDiscard: ["SKIP"] };
+  const zone = { ...resolveZones(makeData())[0], groupEvents: true, timeOffsetBeforeStart: 60, timeOffsetBeforeEnd: 30, eventsToDiscard: ["SKIP"] };
   const events = [
     { start: new Date("2030-01-07T09:00:00Z"), end: new Date("2030-01-07T10:00:00Z"), summary: "A", description: "" },
     { start: new Date("2030-01-07T13:00:00Z"), end: new Date("2030-01-07T15:00:00Z"), summary: "B", description: "" },
     { start: new Date("2030-01-07T11:00:00Z"), end: new Date("2030-01-07T12:00:00Z"), summary: "C", description: "SKIP" }
   ];
-  const special = buildSpecialEvents(room, events);
+  const special = buildSpecialEvents(zone, events);
   assert.equal(Object.keys(special).length, 1);
   assert.equal(special[1].name, "A, B");
   assert.equal(special[1].transitions[1].time, "09:00:00"); // 10:00 Paris - 1 h

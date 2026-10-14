@@ -5,7 +5,7 @@ const os = require("node:os");
 const path = require("node:path");
 const { readConfig, writeConfig, applyConnectionsToDevices } = require("../server");
 
-test("stores only the device profile map in deviceProfiles.json", async (context) => {
+test("stores only the device profile map in device-profiles.json", async (context) => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), "lorabac-config-"));
   context.after(() => fs.rm(directory, { recursive: true, force: true }));
 
@@ -40,7 +40,7 @@ test("stores only the device profile map in deviceProfiles.json", async (context
   };
 
   await writeConfig(config, directory);
-  const fileContent = await fs.readFile(path.join(directory, "deviceProfiles.json"), "utf8");
+  const fileContent = await fs.readFile(path.join(directory, "device-profiles.json"), "utf8");
   assert.deepEqual(JSON.parse(fileContent), config.deviceProfiles);
   assert.equal(fileContent.includes("globalConfig"), false);
 
@@ -50,7 +50,7 @@ test("stores only the device profile map in deviceProfiles.json", async (context
   assert.equal(materialized.deviceProfiles.sensor.controller.connectionName, "Office");
   assert.equal(config.deviceProfiles.sensor.controller.ipAddress, "192.168.1.10");
   await writeConfig(materialized, directory);
-  const savedDeviceProfiles = JSON.parse(await fs.readFile(path.join(directory, "deviceProfiles.json"), "utf8"));
+  const savedDeviceProfiles = JSON.parse(await fs.readFile(path.join(directory, "device-profiles.json"), "utf8"));
   assert.equal(savedDeviceProfiles.sensor.controller.ipAddress, "10.20.30.40");
   const savedConnections = JSON.parse(await fs.readFile(path.join(directory, "bms-connections.json"), "utf8"));
   assert.equal(savedConnections["bms-connections"].Office.ipAddress, "10.20.30.40");
@@ -88,7 +88,7 @@ test("uses controller.connectionName as the profile assignment fallback", () => 
   assert.equal(result.deviceProfiles.sensor.controller.ipAddress, "192.168.1.10");
 });
 
-test("ignores legacy config.json when deviceProfiles.json is missing", async (context) => {
+test("ignores legacy config.json when device-profiles.json is missing", async (context) => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), "lorabac-legacy-config-"));
   context.after(() => fs.rm(directory, { recursive: true, force: true }));
   await fs.writeFile(path.join(directory, "config.json"), JSON.stringify({
@@ -116,6 +116,26 @@ test("reads legacy deviceList.json and upgrades identity.deviceType", async (con
   assert.equal(config.deviceProfiles.sensor.identity.deviceProfile, "sensor");
   assert.equal(Object.hasOwn(config.deviceProfiles.sensor.identity, "deviceType"), false);
   assert.equal(Object.hasOwn(config, "deviceList"), false);
+});
+
+test("reads legacy deviceProfiles.json and saves using device-profiles.json", async (context) => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), "lorabac-device-profiles-migration-"));
+  context.after(() => fs.rm(directory, { recursive: true, force: true }));
+  const legacyProfiles = {
+    sensor: {
+      identity: { maxDevNum: 4 },
+      controller: { ipAddress: "192.168.1.10", protocol: "bacnet" },
+      lorawan: { networkServer: "tts" },
+      bacnet: { objects: {} }
+    }
+  };
+  await fs.writeFile(path.join(directory, "deviceProfiles.json"), JSON.stringify(legacyProfiles));
+
+  const config = await readConfig(directory);
+  assert.equal(config.deviceProfiles.sensor.identity.maxDevNum, 4);
+  const normalizedProfiles = structuredClone(config.deviceProfiles);
+  await writeConfig(config, directory);
+  assert.deepEqual(JSON.parse(await fs.readFile(path.join(directory, "device-profiles.json"), "utf8")), normalizedProfiles);
 });
 
 test("normalizes legacy deviceList and identity.deviceType API fields", () => {
@@ -153,7 +173,7 @@ test("reconstructs separate named profiles from device settings", async (context
   assert.equal(migrated.connections[migrated.deviceConnections.lab].ipAddress, "10.0.0.15");
 });
 
-test("restores named profiles from controller.connectionName in deviceProfiles.json", async (context) => {
+test("restores named profiles from controller.connectionName in device-profiles.json", async (context) => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), "lorabac-named-profiles-"));
   context.after(() => fs.rm(directory, { recursive: true, force: true }));
   const deviceProfiles = {
@@ -170,7 +190,7 @@ test("restores named profiles from controller.connectionName in deviceProfiles.j
       bacnet: { objects: {} }
     }
   };
-  await fs.writeFile(path.join(directory, "deviceProfiles.json"), JSON.stringify(deviceProfiles));
+  await fs.writeFile(path.join(directory, "device-profiles.json"), JSON.stringify(deviceProfiles));
 
   const restored = await readConfig(directory);
   assert.deepEqual(Object.keys(restored.connections).sort(), ["Lab LAN", "Office LAN"]);

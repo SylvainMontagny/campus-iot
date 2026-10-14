@@ -1,4 +1,4 @@
-function createDefaultRoomsSchedules() {
+function createDefaultZonesSchedules() {
   return {
     icalToScheduleConf: {
       timeBetweenScheduleUpdate: 180,
@@ -33,7 +33,7 @@ function createDefaultRoomsSchedules() {
         }
       }
     },
-    rooms: []
+    zones: []
   };
 }
 
@@ -52,8 +52,8 @@ function isValidTimeZone(timeZone) {
   }
 }
 
-// Validates only the keys present, so it serves both the global defaults and per-room overrides.
-function validateRoomSettings(settings, basePath, errors) {
+// Validates only the keys present, so it serves both the global defaults and per-zone overrides.
+function validateZoneSettings(settings, basePath, errors) {
   const check = (key, valid, message) => {
     if (Object.hasOwn(settings, key) && !valid(settings[key])) errors.push(issue(message, `${basePath}.${key}`));
   };
@@ -70,14 +70,14 @@ function validateRoomSettings(settings, basePath, errors) {
   check("weekly", (v) => v && typeof v === "object" && !Array.isArray(v), "Must be a JSON object");
 }
 
-function validateRoomsSchedules(data, { deviceProfiles = {}, connections = {} } = {}) {
+function validateZonesSchedules(data, { deviceProfiles = {}, connections = {} } = {}) {
   const errors = [];
   const conf = data?.icalToScheduleConf;
-  if (!conf || typeof conf !== "object" || !Array.isArray(data.rooms)) {
-    return [issue("Rooms & Schedules must contain icalToScheduleConf and a rooms list", "roomsSchedules")];
+  if (!conf || typeof conf !== "object" || !Array.isArray(data.zones)) {
+    return [issue("Zones & Schedules must contain icalToScheduleConf and a zones list", "zonesSchedules")];
   }
 
-  const confPath = "roomsSchedules.icalToScheduleConf";
+  const confPath = "zonesSchedules.icalToScheduleConf";
   for (const key of ["timeBetweenScheduleUpdate", "timeBetweenScheduleAVUpdate"]) {
     if (!isNumber(conf[key]) || conf[key] <= 0) errors.push(issue("Must be a number of seconds greater than 0", `${confPath}.${key}`));
   }
@@ -90,48 +90,48 @@ function validateRoomsSchedules(data, { deviceProfiles = {}, connections = {} } 
   if (conf.logs !== undefined && (!conf.logs || typeof conf.logs !== "object" || !Object.values(conf.logs).every((value) => typeof value === "boolean"))) {
     errors.push(issue("Log options must be true or false", `${confPath}.logs`));
   }
-  if (!conf.defaults || typeof conf.defaults !== "object") errors.push(issue("Default room settings are missing", `${confPath}.defaults`));
-  else validateRoomSettings(conf.defaults, `${confPath}.defaults`, errors);
+  if (!conf.defaults || typeof conf.defaults !== "object") errors.push(issue("Default zone settings are missing", `${confPath}.defaults`));
+  else validateZoneSettings(conf.defaults, `${confPath}.defaults`, errors);
 
-  if (rangeValid && data.rooms.length > max - min + 1) {
-    errors.push(issue("Too many rooms, increase the schedule instance range", "In ROOMS & SCHEDULES"));
+  if (rangeValid && data.zones.length > max - min + 1) {
+    errors.push(issue("Too many zones, increase the schedule instance range", "In ZONES & SCHEDULES"));
   }
 
   const names = new Set();
-  if (data.excludedRooms !== undefined && !Array.isArray(data.excludedRooms)) {
-    errors.push(issue("Excluded rooms must be a list", "roomsSchedules.excludedRooms"));
+  if (data.excludedZones !== undefined && !Array.isArray(data.excludedZones)) {
+    errors.push(issue("Excluded zones must be a list", "zonesSchedules.excludedZones"));
   }
   const usedNumbers = {};
-  data.rooms.forEach((room, index) => {
-    const roomPath = `roomsSchedules.rooms.${index}`;
-    if (!room || typeof room !== "object") {
-      errors.push(issue("Room must be an object", roomPath));
+  data.zones.forEach((zone, index) => {
+    const zonePath = `zonesSchedules.zones.${index}`;
+    if (!zone || typeof zone !== "object") {
+      errors.push(issue("Zone must be an object", zonePath));
       return;
     }
     // The name ends up in BACnet binding names that are used in URLs.
-    if (typeof room.scheduleName !== "string" || !room.scheduleName || /\s/.test(room.scheduleName)) {
-      errors.push(issue("Room name must be set and cannot contain spaces", `${roomPath}.scheduleName`));
-    } else if (names.has(room.scheduleName)) {
-      errors.push(issue(`Duplicate room name '${room.scheduleName}'`, `${roomPath}.scheduleName`));
+    if (typeof zone.scheduleName !== "string" || !zone.scheduleName || /\s/.test(zone.scheduleName)) {
+      errors.push(issue("Zone name must be set and cannot contain spaces", `${zonePath}.scheduleName`));
+    } else if (names.has(zone.scheduleName)) {
+      errors.push(issue(`Duplicate zone name '${zone.scheduleName}'`, `${zonePath}.scheduleName`));
     }
-    names.add(room.scheduleName);
+    names.add(zone.scheduleName);
 
-    const connection = connections[room.connectionName];
-    if (!connection) errors.push(issue("Select an existing BACnet BMS connection", `${roomPath}.connectionName`));
-    else if (connection.protocol !== "restAPIBacnet") errors.push(issue("Rooms & Schedules needs a 'REST API BACnet' connection", `${roomPath}.connectionName`));
-    else if (!connection.ipAddress) errors.push(issue("The BMS connection has no IP address", `${roomPath}.connectionName`));
+    const connection = connections[zone.connectionName];
+    if (!connection) errors.push(issue("Select an existing BACnet BMS connection", `${zonePath}.connectionName`));
+    else if (connection.protocol !== "restAPIBacnet") errors.push(issue("Zones & Schedules needs a 'REST API BACnet' connection", `${zonePath}.connectionName`));
+    else if (!connection.ipAddress) errors.push(issue("The BMS connection has no IP address", `${zonePath}.connectionName`));
 
-    if (typeof room.url !== "string" || !/^https?:\/\//i.test(room.url)) {
-      errors.push(issue("iCal URL must start with http:// or https://", `${roomPath}.url`));
+    if (typeof zone.url !== "string" || !/^https?:\/\//i.test(zone.url)) {
+      errors.push(issue("iCal URL must start with http:// or https://", `${zonePath}.url`));
     }
-    validateRoomSettings(room, roomPath, errors);
+    validateZoneSettings(zone, zonePath, errors);
 
-    if (!room.devices || typeof room.devices !== "object" || Array.isArray(room.devices)) {
-      errors.push(issue("Devices must be an object", `${roomPath}.devices`));
+    if (!zone.devices || typeof zone.devices !== "object" || Array.isArray(zone.devices)) {
+      errors.push(issue("Devices must be an object", `${zonePath}.devices`));
       return;
     }
-    for (const [profileName, device] of Object.entries(room.devices)) {
-      const devicePath = `${roomPath}.devices.${profileName}`;
+    for (const [profileName, device] of Object.entries(zone.devices)) {
+      const devicePath = `${zonePath}.devices.${profileName}`;
       const definition = deviceProfiles[profileName];
       if (!definition) {
         errors.push(issue(`Device profile '${profileName}' does not exist`, devicePath));
@@ -152,16 +152,16 @@ function validateRoomsSchedules(data, { deviceProfiles = {}, connections = {} } 
   });
 
   for (const [profileName, numbers] of Object.entries(usedNumbers)) {
-    if (new Set(numbers).size !== numbers.length) errors.push(issue(`${profileName}: a device number is used more than once`, "In ROOMS & SCHEDULES"));
+    if (new Set(numbers).size !== numbers.length) errors.push(issue(`${profileName}: a device number is used more than once`, "In ZONES & SCHEDULES"));
   }
   return errors;
 }
 
-// Fills every setting a room does not override from the global defaults and assigns the schedule instance numbers.
-function resolveRooms({ icalToScheduleConf, rooms }) {
+// Fills every setting a zone does not override from the global defaults and assigns the schedule instance numbers.
+function resolveZones({ icalToScheduleConf, zones }) {
   const [min] = icalToScheduleConf.scheduleInstanceRange;
-  return rooms.map((room, index) => {
-    const resolved = structuredClone(room);
+  return zones.map((zone, index) => {
+    const resolved = structuredClone(zone);
     for (const [key, value] of Object.entries(icalToScheduleConf.defaults)) resolved[key] ??= structuredClone(value);
     resolved.scheduleID = min + index;
     resolved.url = applyAdeUrlSuffix(resolved);
@@ -170,26 +170,26 @@ function resolveRooms({ icalToScheduleConf, rooms }) {
 }
 
 // ADE calendars: set &lastDate=<today + nbrDaysPreview>. Idempotent, an existing &lastDate is replaced.
-function applyAdeUrlSuffix(room, now = new Date()) {
-  if (!room.addSuffixToAdeURL || typeof room.url !== "string") return room.url;
+function applyAdeUrlSuffix(zone, now = new Date()) {
+  if (!zone.addSuffixToAdeURL || typeof zone.url !== "string") return zone.url;
   const d = new Date(now);
-  d.setDate(d.getDate() + room.nbrDaysPreview);
+  d.setDate(d.getDate() + zone.nbrDaysPreview);
   const suffix = d.toISOString().slice(0, 10);
-  return room.url.includes("&lastDate")
-    ? room.url.replace(/&lastDate=\d{4}-\d{2}-\d{2}/, `&lastDate=${suffix}`)
-    : `${room.url}&lastDate=${suffix}`;
+  return zone.url.includes("&lastDate")
+    ? zone.url.replace(/&lastDate=\d{4}-\d{2}-\d{2}/, `&lastDate=${suffix}`)
+    : `${zone.url}&lastDate=${suffix}`;
 }
 
-// Non-blocking check: returns one warning per iCal URL shared by several rooms.
-function findDuplicateIcalUrls(rooms) {
+// Non-blocking check: returns one warning per iCal URL shared by several zones.
+function findDuplicateIcalUrls(zones) {
   const byUrl = new Map();
-  for (const room of rooms) {
-    const url = typeof room?.url === "string" ? room.url.trim() : "";
+  for (const zone of zones) {
+    const url = typeof zone?.url === "string" ? zone.url.trim() : "";
     if (!url) continue;
-    byUrl.set(url, (byUrl.get(url) || []).concat(room.scheduleName));
+    byUrl.set(url, (byUrl.get(url) || []).concat(zone.scheduleName));
   }
   return [...byUrl].filter(([, names]) => names.length > 1)
-    .map(([url, names]) => `Rooms ${names.join(", ")} use the same iCal URL: ${url}`);
+    .map(([url, names]) => `Zones ${names.join(", ")} use the same iCal URL: ${url}`);
 }
 
-module.exports = { createDefaultRoomsSchedules, validateRoomsSchedules, resolveRooms, applyAdeUrlSuffix, findDuplicateIcalUrls };
+module.exports = { createDefaultZonesSchedules, validateZonesSchedules, resolveZones, applyAdeUrlSuffix, findDuplicateIcalUrls };

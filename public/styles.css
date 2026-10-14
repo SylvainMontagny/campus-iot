@@ -62,7 +62,7 @@ button { cursor: pointer; }
 .nav-status-dot.is-included { background: #3a9b5a; box-shadow: 0 0 0 3px rgb(58 155 90 / 13%); }
 .nav-status-dot.is-excluded { background: #c0483a; box-shadow: 0 0 0 3px rgb(192 72 58 / 13%); }
 .heading-actions { display: flex; gap: 8px; align-items: center; }
-.is-room-excluded .field-grid, .room-devices.is-room-excluded { opacity: .45; filter: grayscale(1); pointer-events: none; }
+.is-zone-excluded .field-grid, .zone-devices.is-zone-excluded { opacity: .45; filter: grayscale(1); pointer-events: none; }
 .nav-status-dot.is-connected { background: #3a9b5a; box-shadow: 0 0 0 3px rgb(58 155 90 / 13%); }
 .nav-status-dot.is-disconnected { background: #d93636; box-shadow: 0 0 0 3px rgb(217 54 54 / 13%); }
 .nav-status-dot.is-connecting { background: #d59b28; box-shadow: 0 0 0 3px rgb(213 155 40 / 13%); }
@@ -77,7 +77,7 @@ button { cursor: pointer; }
 .device-nav-copy strong, .device-nav-copy small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .device-nav-copy strong { font-size: 12px; }
 .device-nav-copy small { margin-top: 3px; color: var(--muted); font-size: 10px; }
-.device-nav-copy .room-default-tag { display: inline; margin: 0 0 0 4px; font-weight: 400; font-style: italic; }
+.device-nav-copy .zone-default-tag { display: inline; margin: 0 0 0 4px; font-weight: 400; font-style: italic; }
 .nav-chevron { color: #87968d; font-size: 21px; }
 .add-device-button { display: flex; align-items: center; gap: 8px; margin: 13px 4px; padding: 8px 5px; color: var(--forest); background: none; border: 0; text-align: left; font-size: 12px; font-weight: 700; }
 .add-device-button span { font-size: 19px; font-weight: 400; }
@@ -137,7 +137,7 @@ button { cursor: pointer; }
 .field-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 16px; }
 .field-row, .field-pair { min-width: 0; grid-column: 1 / -1; }
 .field-row { display: grid; grid-template-columns: minmax(0, 1fr); }
-.room-url-test { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 8px; }
+.zone-url-test { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 8px; }
 .field-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 16px; }
 .field-pair:has(> .field:only-child) { grid-template-columns: minmax(0, 1fr); }
 .field { min-width: 0; display: flex; flex-direction: column; gap: 5px; color: #526259; font-size: 11px; font-weight: 700; }
@@ -158,7 +158,7 @@ button { cursor: pointer; }
 .panel-heading-copy { min-width: 0; display: grid; gap: 3px; }
 .panel-heading-copy strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; }
 .panel-summary-count { margin-left: auto; color: #7c8981; font-size: 11px; white-space: nowrap; }
-.room-device-numbers { margin-left: 0; text-align: center; }
+.zone-device-numbers { margin-left: 0; text-align: center; }
 .device-card-body { padding: 5px 21px 20px; border-top: 1px solid #e8eee8; }
 .device-card-body[hidden], .object-card-body[hidden] { display: none; }
 .subsection-heading { margin-bottom: 15px; }

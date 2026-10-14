@@ -31,9 +31,11 @@ data/bms-connections.json
 data/bms-connections.json.tmp
 data/mqtt-connections.json
 data/mqtt-connections.json.tmp
+data/device-profiles.json
+data/device-profiles.json.tmp
 data/deviceProfiles.json
 data/deviceProfiles.json.tmp
 data/deviceList.json
 data/deviceList.json.tmp
-data/rooms-schedules.json
-data/rooms-schedules.json.tmp
+data/zones-schedules.json
+data/zones-schedules.json.tmp

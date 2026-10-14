@@ -6,7 +6,7 @@ const { validateConfig } = require("./src/config-validation");
 const { createDefaultConfig } = require("./src/default-config");
 const { createMqttService } = require("./src/mqtt-service");
 const { createIcalScheduleService } = require("./src/ical-schedule");
-const { createDefaultRoomsSchedules, validateRoomsSchedules, resolveRooms, findDuplicateIcalUrls } = require("./src/rooms-config");
+const { createDefaultZonesSchedules, validateZonesSchedules, resolveZones, findDuplicateIcalUrls } = require("./src/zones-config");
 const { testBmsConnection } = require("./src/bms-test");
 const { testIcalUrl } = require("./src/ical-test");
 const { version } = require("./package.json");
@@ -23,17 +23,22 @@ app.use(express.json({ limit: "1mb" }));
 app.use(express.static(path.join(__dirname, "public")));
 
 async function readConfig(directory = dataDirectory) {
-  const deviceProfilesPath = path.join(directory, "deviceProfiles.json");
+  const deviceProfilesPath = path.join(directory, "device-profiles.json");
   let savedData;
   try {
     savedData = JSON.parse(await fs.readFile(deviceProfilesPath, "utf8"));
   } catch (error) {
     if (error.code !== "ENOENT") throw error;
     try {
-      savedData = JSON.parse(await fs.readFile(path.join(directory, "deviceList.json"), "utf8"));
+      savedData = JSON.parse(await fs.readFile(path.join(directory, "deviceProfiles.json"), "utf8"));
     } catch (legacyError) {
-      if (legacyError.code === "ENOENT") return createDefaultConfig();
-      throw legacyError;
+      if (legacyError.code !== "ENOENT") throw legacyError;
+      try {
+        savedData = JSON.parse(await fs.readFile(path.join(directory, "deviceList.json"), "utf8"));
+      } catch (deviceListError) {
+        if (deviceListError.code === "ENOENT") return createDefaultConfig();
+        throw deviceListError;
+      }
     }
   }
 
@@ -124,7 +129,7 @@ async function readBmsConnections(directory = dataDirectory) {
 }
 
 async function writeConfig(config, directory = dataDirectory) {
-  const deviceProfilesPath = path.join(directory, "deviceProfiles.json");
+  const deviceProfilesPath = path.join(directory, "device-profiles.json");
   await fs.mkdir(directory, { recursive: true });
   await writeJsonAtomically(deviceProfilesPath, config.deviceProfiles);
   // Assigned profiles are rebuilt from device settings; this file also retains unused profiles.
@@ -140,28 +145,28 @@ async function writeJsonAtomically(filePath, value) {
   await fs.rename(temporaryPath, filePath);
 }
 
-async function readRoomsSchedules(directory = dataDirectory) {
+async function readZonesSchedules(directory = dataDirectory) {
   try {
-    return JSON.parse(await fs.readFile(path.join(directory, "rooms-schedules.json"), "utf8"));
+    return JSON.parse(await fs.readFile(path.join(directory, "zones-schedules.json"), "utf8"));
   } catch (error) {
-    if (error.code === "ENOENT") return createDefaultRoomsSchedules();
+    if (error.code === "ENOENT") return createDefaultZonesSchedules();
     throw error;
   }
 }
 
-async function writeRoomsSchedules(roomsSchedules, directory = dataDirectory) {
+async function writeZonesSchedules(zonesSchedules, directory = dataDirectory) {
   await fs.mkdir(directory, { recursive: true });
-  await writeJsonAtomically(path.join(directory, "rooms-schedules.json"), {
-    icalToScheduleConf: roomsSchedules.icalToScheduleConf,
-    rooms: roomsSchedules.rooms,
-    excludedRooms: roomsSchedules.excludedRooms || []
+  await writeJsonAtomically(path.join(directory, "zones-schedules.json"), {
+    icalToScheduleConf: zonesSchedules.icalToScheduleConf,
+    zones: zonesSchedules.zones,
+    excludedZones: zonesSchedules.excludedZones || []
   });
 }
 
-function startRoomsSchedules(roomsSchedules, config) {
+function startZonesSchedules(zonesSchedules, config) {
   return scheduleService.start({
-    icalToScheduleConf: roomsSchedules.icalToScheduleConf,
-    rooms: roomsSchedules.rooms,
+    icalToScheduleConf: zonesSchedules.icalToScheduleConf,
+    zones: zonesSchedules.zones,
     deviceProfiles: config.deviceProfiles,
     connections: config.connections
   });
@@ -318,7 +323,7 @@ app.post("/api/bms/test", async (request, response) => {
   }
 });
 
-app.post("/api/rooms/test-ical", async (request, response) => {
+app.post("/api/zones/test-ical", async (request, response) => {
   try {
     response.json({ ok: true, message: await testIcalUrl(request.body?.url) });
   } catch (error) {
@@ -328,7 +333,7 @@ app.post("/api/rooms/test-ical", async (request, response) => {
 
 app.get("/api/config", async (_request, response, next) => {
   try {
-    response.json({ ...(await readConfig()), roomsSchedules: await readRoomsSchedules() });
+    response.json({ ...(await readConfig()), zonesSchedules: await readZonesSchedules() });
   } catch (error) {
     next(error);
   }
@@ -337,8 +342,8 @@ app.get("/api/config", async (_request, response, next) => {
 app.post("/api/config/validate", (request, response) => {
   const config = applyConnectionsToDevices(request.body);
   const errors = validateConfig(config);
-  if (!errors.length && request.query.roomsSchedules === "true" && request.body?.roomsSchedules !== undefined) {
-    errors.push(...validateRoomsSchedules(request.body.roomsSchedules, config));
+  if (!errors.length && request.query.zonesSchedules === "true" && request.body?.zonesSchedules !== undefined) {
+    errors.push(...validateZonesSchedules(request.body.zonesSchedules, config));
   }
   response.status(errors.length ? 400 : 200).json({ valid: errors.length === 0, errors });
 });
@@ -346,9 +351,9 @@ app.post("/api/config/validate", (request, response) => {
 app.put("/api/config", async (request, response, next) => {
   try {
     const config = applyConnectionsToDevices(request.body);
-    const roomsSchedules = request.body?.roomsSchedules;
+    const zonesSchedules = request.body?.zonesSchedules;
     const errors = validateConfig(config);
-    if (!errors.length && roomsSchedules !== undefined) errors.push(...validateRoomsSchedules(roomsSchedules, config));
+    if (!errors.length && zonesSchedules !== undefined) errors.push(...validateZonesSchedules(zonesSchedules, config));
     if (errors.length) {
       response.status(400).json({ error: "Configuration is invalid", errors });
       return;
@@ -362,12 +367,12 @@ app.put("/api/config", async (request, response, next) => {
         mqttService.clearPreviousValues(deviceProfile);
       }
     }
-    const warnings = roomsSchedules === undefined ? [] : findDuplicateIcalUrls(roomsSchedules.rooms);
-    if (roomsSchedules !== undefined) {
-      await writeRoomsSchedules(roomsSchedules);(roomsSchedules);
-      const rooms = resolveRooms(roomsSchedules);
-      mqttService.log("output", `Rooms & Schedules saved.\nrooms = ${JSON.stringify(rooms, null, 2)}\nicalToScheduleConf = ${JSON.stringify(roomsSchedules.icalToScheduleConf, null, 2)}`);
-      startRoomsSchedules(roomsSchedules, config);
+    const warnings = zonesSchedules === undefined ? [] : findDuplicateIcalUrls(zonesSchedules.zones);
+    if (zonesSchedules !== undefined) {
+      await writeZonesSchedules(zonesSchedules);(zonesSchedules);
+      const zones = resolveZones(zonesSchedules);
+      mqttService.log("output", `Zones & Schedules saved.\nzones = ${JSON.stringify(zones, null, 2)}\nicalToScheduleConf = ${JSON.stringify(zonesSchedules.icalToScheduleConf, null, 2)}`);
+      startZonesSchedules(zonesSchedules, config);
     }
     response.json({ saved: true, warnings });
   } catch (error) {
@@ -395,9 +400,9 @@ if (require.main === module) {
       console.error(`MQTT auto-connect failed: ${error.message}`);
     }
     try {
-      await startRoomsSchedules(await readRoomsSchedules(), await readConfig());
+      await startZonesSchedules(await readZonesSchedules(), await readConfig());
     } catch (error) {
-      console.error(`Rooms & Schedules start failed: ${error.message}`);
+      console.error(`Zones & Schedules start failed: ${error.message}`);
     }
   });
 }
