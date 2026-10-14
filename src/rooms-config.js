@@ -164,8 +164,20 @@ function resolveRooms({ icalToScheduleConf, rooms }) {
     const resolved = structuredClone(room);
     for (const [key, value] of Object.entries(icalToScheduleConf.defaults)) resolved[key] ??= structuredClone(value);
     resolved.scheduleID = min + index;
+    resolved.url = applyAdeUrlSuffix(resolved);
     return resolved;
   });
 }
 
-module.exports = { createDefaultRoomsSchedules, validateRoomsSchedules, resolveRooms };
+// ADE calendars: set &lastDate=<today + nbrDaysPreview>. Idempotent, an existing &lastDate is replaced.
+function applyAdeUrlSuffix(room, now = new Date()) {
+  if (!room.addSuffixToAdeURL || typeof room.url !== "string") return room.url;
+  const d = new Date(now);
+  d.setDate(d.getDate() + room.nbrDaysPreview);
+  const suffix = d.toISOString().slice(0, 10);
+  return room.url.includes("&lastDate")
+    ? room.url.replace(/&lastDate=\d{4}-\d{2}-\d{2}/, `&lastDate=${suffix}`)
+    : `${room.url}&lastDate=${suffix}`;
+}
+
+module.exports = { createDefaultRoomsSchedules, validateRoomsSchedules, resolveRooms, applyAdeUrlSuffix };

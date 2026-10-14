@@ -1,6 +1,6 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { createDefaultRoomsSchedules, validateRoomsSchedules, resolveRooms } = require("../src/rooms-config");
+const { createDefaultRoomsSchedules, validateRoomsSchedules, resolveRooms, applyAdeUrlSuffix } = require("../src/rooms-config");
 const { buildSpecialEvents } = require("../src/ical-schedule");
 
 const deviceProfiles = {
@@ -57,6 +57,21 @@ test("rooms inherit the global defaults and get consecutive schedule instances",
   assert.equal(room.valueOccupied, 21);
   assert.equal(room.valueUnOccupied, 15);
   assert.equal(room.timeZone, "Europe/Paris");
+});
+
+test("ADE suffix is appended or replaced only when enabled", () => {
+  const now = new Date("2025-01-01T10:00:00Z");
+  const base = { addSuffixToAdeURL: true, nbrDaysPreview: 10 };
+  assert.equal(applyAdeUrlSuffix({ ...base, url: "https://x/a?b=1" }, now), "https://x/a?b=1&lastDate=2025-01-11");
+  assert.equal(applyAdeUrlSuffix({ ...base, url: "https://x/a?b=1&lastDate=2020-01-01" }, now), "https://x/a?b=1&lastDate=2025-01-11");
+  assert.equal(applyAdeUrlSuffix({ ...base, addSuffixToAdeURL: false, url: "https://x/a" }, now), "https://x/a");
+});
+
+test("resolveRooms applies the ADE suffix from the defaults", () => {
+  const data = makeData({ url: "https://x/a?b=1" });
+  data.icalToScheduleConf.defaults.addSuffixToAdeURL = true;
+  const [room] = resolveRooms(data);
+  assert.match(room.url, /^https:\/\/x\/a\?b=1&lastDate=\d{4}-\d{2}-\d{2}$/);
 });
 
 test("grouped events are merged per day with the configured offsets", () => {
