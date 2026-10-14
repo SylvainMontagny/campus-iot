@@ -8,6 +8,7 @@ const { createMqttService } = require("./src/mqtt-service");
 const { createIcalScheduleService } = require("./src/ical-schedule");
 const { createDefaultZonesSchedules, createDefaultScheduleEventsConf, validateZonesSchedules, resolveZones, findDuplicateIcalUrls } = require("./src/zones-config");
 const { testBmsConnection } = require("./src/bms-test");
+const { listBmsObjects } = require("./src/bms-objects");
 const { testIcalUrl } = require("./src/ical-test");
 const { version } = require("./package.json");
 
@@ -176,7 +177,7 @@ function startZonesSchedules(zonesSchedules, config) {
   });
 }
 
-const MQTT_FIELDS = ["server", "port", "username", "password", "topic"];
+const MQTT_FIELDS = ["networkServer", "server", "port", "username", "password", "topic", "grpcApiKey", "serverAddress", "grpcPort"];
 
 async function readMqttSettings(directory = dataDirectory) {
   try {
@@ -203,14 +204,8 @@ async function writeMqttSettings(settings, directory = dataDirectory) {
 function inferConnectionSettings(device) {
   if (!device) return null;
   const controller = device.controller || {};
-  const lorawan = device.lorawan || {};
-  const chirpstack = lorawan.chirpstack || {};
   return {
     ipAddress: controller.ipAddress || "",
-    networkServer: lorawan.networkServer || "tts",
-    grpcApiKey: chirpstack.grpcApiKey || "",
-    serverAddress: chirpstack.serverAddress || "",
-    grpcPort: chirpstack.grpcPort || 8080,
     protocol: controller.protocol || "bacnet",
     model: controller.model || "distechControlsV2",
     bacnetLogin: controller.login || "",
@@ -252,20 +247,13 @@ function applyConnectionsToDevices(config) {
     }
 
     device.lorawan ||= {};
-    device.lorawan.networkServer = connection.networkServer;
-    if (connection.networkServer === "chirpstack") {
-      device.lorawan.chirpstack = {
-        grpcApiKey: connection.grpcApiKey,
-        serverAddress: connection.serverAddress,
-        grpcPort: Number(connection.grpcPort) || 8080
-      };
-    } else {
-      delete device.lorawan.chirpstack;
-    }
+    // The network server is chosen on the MQTT connection page and already set on each profile.
+    device.lorawan.networkServer ||= connection.networkServer || "tts";
+    if (device.lorawan.networkServer !== "chirpstack") delete device.lorawan.chirpstack;
     const hasDownlink = Object.values(device.bacnet?.objects || {}).some((object) => object.dataDirection === "downlink");
-    if (connection.networkServer === "actility" && hasDownlink) {
+    if (device.lorawan.networkServer === "actility" && hasDownlink) {
       device.lorawan.actility ||= { driver: { pId: "", mId: "", ver: "" } };
-    } else if (connection.networkServer !== "actility" || !hasDownlink) {
+    } else {
       delete device.lorawan.actility;
     }
   }
@@ -322,6 +310,14 @@ app.post("/api/mqtt/disconnect", (_request, response) => {
 app.post("/api/bms/test", async (request, response) => {
   try {
     response.json({ ok: true, message: await testBmsConnection(request.body) });
+  } catch (error) {
+    response.status(502).json({ ok: false, error: error.message });
+  }
+});
+
+app.post("/api/bms/objects", async (request, response) => {
+  try {
+    response.json({ ok: true, ...(await listBmsObjects(request.body)) });
   } catch (error) {
     response.status(502).json({ ok: false, error: error.message });
   }

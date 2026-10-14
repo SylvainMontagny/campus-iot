@@ -51,6 +51,17 @@ test("maps a TTS uplink to a cloned device output", () => {
   assert.equal(deviceProfiles.sensor.bacnet.objects.temperature.instanceNum, 1);
 });
 
+test("processes a profile configured for The Things Stack (ttn) like tts", () => {
+  const deviceProfiles = makeDeviceProfiles();
+  deviceProfiles.sensor.lorawan.networkServer = "ttn";
+  const result = mapIncomingPacket("v3/app@ttn/devices/sensor-2/up", Buffer.from(JSON.stringify({
+    end_device_ids: { device_id: "sensor-2", dev_eui: "A1B2" },
+    uplink_message: { decoded_payload: { decoded: { temperature: 21.5 } } }
+  })), deviceProfiles);
+  assert.equal(result.error, undefined);
+  assert.equal(result.device.mqtt.topicDownlink, "v3/app@ttn/devices/sensor-2/down");
+});
+
 test("maps ChirpStack and Actility uplinks and ignores non-uplink notifications", () => {
   const deviceProfiles = makeDeviceProfiles();
   deviceProfiles.sensor.lorawan.networkServer = "chirpstack";

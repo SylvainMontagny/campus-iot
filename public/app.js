@@ -77,9 +77,70 @@ function defaultConfig() {
 
 function defaultConnection() {
   return {
-    ipAddress: "", networkServer: "tts", grpcApiKey: "", serverAddress: "", grpcPort: 8080,
+    ipAddress: "",
     protocol: "bacnet", model: "distechControlsV2", bacnetLogin: "", bacnetPassword: ""
   };
+}
+
+// The LoRaWAN network server is chosen on the MQTT connection page and applies to every device profile.
+const NETWORK_PREFILLS = {
+  ttn: { server: "eu1.cloud.thethings.network", username: "YOUR_APPLICATION_ID@ttn", topic: "v3/YOUR_APPLICATION_ID@ttn/devices/+/up" },
+  tts: { server: "eu1.cloud.thethings.network", username: "YOUR_APPLICATION_ID", topic: "v3/YOUR_APPLICATION_ID/devices/+/up" },
+  chirpstack: { topic: "application/YOUR_APPLICATION_ID/device/+/event/up" },
+  actility: {}
+};
+const MQTT_TEXT_FIELDS = ["networkServer", "server", "port", "username", "password", "topic", "grpcApiKey", "serverAddress", "grpcPort"];
+
+function networkSettings() {
+  return {
+    networkServer: $("#mqtt-networkServer").value,
+    grpcApiKey: $("#mqtt-grpcApiKey").value,
+    serverAddress: $("#mqtt-serverAddress").value,
+    grpcPort: $("#mqtt-grpcPort").value
+  };
+}
+
+// Fields still holding a prefilled value of any network server are replaced; values typed by the user are kept.
+function applyNetworkPrefill(onlyEmpty = false) {
+  const prefill = NETWORK_PREFILLS[$("#mqtt-networkServer").value] || {};
+  for (const field of ["server", "username", "topic"]) {
+    const input = $(`#mqtt-${field}`);
+    const isPrefilled = Object.values(NETWORK_PREFILLS).some((values) => values[field] === input.value);
+    if (!input.value || (!onlyEmpty && isPrefilled)) input.value = prefill[field] ?? "";
+  }
+  if (!$("#mqtt-port").value) $("#mqtt-port").value = "1883";
+}
+
+function toggleChirpstackFields() {
+  $("#mqtt-chirpstack-fields").hidden = $("#mqtt-networkServer").value !== "chirpstack";
+}
+
+function networkFromProfiles(profiles) {
+  const lorawan = Object.values(profiles || {}).map((device) => device.lorawan).find((item) => item?.networkServer);
+  if (!lorawan) return null;
+  const chirpstack = lorawan.chirpstack || {};
+  return { networkServer: lorawan.networkServer, grpcApiKey: chirpstack.grpcApiKey || "", serverAddress: chirpstack.serverAddress || "", grpcPort: chirpstack.grpcPort || 8080 };
+}
+
+function showNetworkSettings(network) {
+  $("#mqtt-networkServer").value = network.networkServer;
+  $("#mqtt-grpcApiKey").value = network.grpcApiKey ?? "";
+  $("#mqtt-serverAddress").value = network.serverAddress ?? "";
+  $("#mqtt-grpcPort").value = network.grpcPort || 8080;
+  toggleChirpstackFields();
+}
+
+function inferNetworkFromProfiles(profiles = state.config.deviceProfiles) {
+  const network = networkFromProfiles(profiles);
+  if (network) showNetworkSettings(network);
+}
+
+// Existing profiles define the network server until one has been saved with the MQTT connection.
+function inferNetworkWhenUnsaved() {
+  if (state.mqttLoaded && state.configLoaded && !state.mqttNetworkSaved) {
+    inferNetworkFromProfiles();
+    applyNetworkPrefill(true);
+  }
 }
 
 function makeDevice(name, connectionName) {
@@ -136,7 +197,7 @@ function checkbox(label, checked, key) {
   return `<label class="check-field"><input type="checkbox" data-debug="${key}"${checked ? " checked" : ""}><span>${escapeHtml(label)}</span></label>`;
 }
 
-function applyConnection(device, connection, connectionName = "") {
+function applyConnection(device, connection, connectionName = "", network = networkSettings()) {
   device.controller ||= {};
   device.controller.connectionName = connectionName;
   if (!connection) return;
@@ -153,17 +214,17 @@ function applyConnection(device, connection, connectionName = "") {
   }
 
   device.lorawan ||= {};
-  device.lorawan.networkServer = connection.networkServer;
-  if (connection.networkServer === "chirpstack") {
+  device.lorawan.networkServer = network.networkServer;
+  if (network.networkServer === "chirpstack") {
     device.lorawan.chirpstack = {
-      grpcApiKey: connection.grpcApiKey,
-      serverAddress: connection.serverAddress,
-      grpcPort: Number(connection.grpcPort) || 8080
+      grpcApiKey: network.grpcApiKey,
+      serverAddress: network.serverAddress,
+      grpcPort: Number(network.grpcPort) || 8080
     };
   } else {
     delete device.lorawan.chirpstack;
   }
-  if (connection.networkServer === "actility" && hasDownlink(device)) {
+  if (network.networkServer === "actility" && hasDownlink(device)) {
     device.lorawan.actility ||= { driver: { pId: "", mId: "", ver: "" } };
   } else {
     delete device.lorawan.actility;
@@ -180,14 +241,8 @@ function applyConnectionToAssignedDevices(connectionName) {
 
 function connectionFromDevice(device) {
   const controller = device.controller || {};
-  const lorawan = device.lorawan || {};
-  const chirpstack = lorawan.chirpstack || {};
   return {
     ipAddress: controller.ipAddress || "",
-    networkServer: lorawan.networkServer || "tts",
-    grpcApiKey: chirpstack.grpcApiKey || "",
-    serverAddress: chirpstack.serverAddress || "",
-    grpcPort: chirpstack.grpcPort || 8080,
     protocol: controller.protocol || "bacnet",
     model: controller.model || "distechControlsV2",
     bacnetLogin: controller.login || "",
@@ -241,18 +296,31 @@ function renderGlobal() {
   removeButton.disabled = false;
   const fields = [
     `<div class="field-row">${inputField("BMS IP address", "ipAddress", global.ipAddress, { placeholder: "192.168.1.10" })}</div>`,
-    `<div class="field-row">${selectField("LoRaWAN Network server", "networkServer", global.networkServer, [["tts", "The Things Stack"], ["chirpstack", "ChirpStack"], ["actility", "Actility"]])}</div>`,
     `<div class="field-pair">${selectField("BMS protocol", "protocol", global.protocol, [["bacnet", "BACnet"], ["restAPIBacnet", "REST API BACnet"]])}${global.protocol === "restAPIBacnet" ? selectField("REST API model", "model", global.model, [["distechControlsV2", "Distech Controls v2"]]) : ""}</div>`
   ];
-  if (global.networkServer === "chirpstack") {
-    fields.push(`<div class="field-row">${inputField("gRPC API key", "grpcApiKey", global.grpcApiKey, { secret: true })}</div>`);
-    fields.push(`<div class="field-pair">${inputField("Server address", "serverAddress", global.serverAddress)}${inputField("gRPC port", "grpcPort", global.grpcPort, { type: "number", min: 1, max: 65535 })}</div>`);
-  }
   if (global.protocol === "restAPIBacnet") {
     fields.push(`<div class="field-pair">${inputField("Login", "bacnetLogin", global.bacnetLogin)}${inputField("Password", "bacnetPassword", global.bacnetPassword, { secret: true })}</div>`);
   }
   fields.push(`<div class="mqtt-actions"><button class="button button-primary" type="button" data-action="test-connection">Test</button></div>`);
   $("#global-form").innerHTML = fields.map((html) => html.replaceAll("data-path=", "data-connection-field=")).join("");
+  renderBmsObjects(connectionName);
+}
+
+function table(headers, rows) {
+  return `<div class="bms-objects-table-wrap"><table class="bms-objects-table"><thead><tr>${headers.map((header) => `<th>${header}</th>`).join("")}</tr></thead><tbody>${rows.map((row) => `<tr>${row.map((cell) => `<td>${escapeHtml(String(cell ?? ""))}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`;
+}
+
+function renderBmsObjects(connectionName) {
+  const result = state.bmsObjects?.[connectionName];
+  let body = "";
+  if (result?.loading) body = `<p class="bms-objects-status">Reading the object list…</p>`;
+  else if (result?.error) body = `<p class="bms-objects-status is-error">${escapeHtml(result.error)}</p>`;
+  else if (result) {
+    body = `<h3>Analog and binary values</h3>${result.values.length ? table(["Type", "Instance", "Name", "Present value"], result.values.map((object) => [object.type, object.instance, object.name, object.presentValue])) : `<p class="bms-objects-status">No analog or binary values found.</p>`}
+      <h3>Schedules</h3>${result.schedules.length ? table(["Instance", "Name", "Present value", "Exception events"], result.schedules.map((object) => [object.instance, object.name, object.presentValue, object.exceptionSchedule])) : `<p class="bms-objects-status">No schedules found.</p>`}`;
+  }
+  $("#bms-objects-section").innerHTML = `<div class="section-heading"><div><h2>BMS objects</h2></div></div>
+    <div class="mqtt-actions"><button class="button button-primary" type="button" data-action="get-bms-objects"${result?.loading ? " disabled" : ""}>Get all objects from this BMS</button></div>${body}`;
 }
 
 function renderNavigation() {
@@ -298,7 +366,6 @@ function renderCategoryPage() {
           <span class="category-list-copy">
             <strong>${escapeHtml(name)}</strong>
             <small>BMS IP address: ${escapeHtml(connection.ipAddress || "Not set")}</small>
-            <small>LoRaWAN Network server: ${escapeHtml({ tts: "The Things Stack", chirpstack: "ChirpStack", actility: "Actility" }[connection.networkServer] || connection.networkServer || "Not set")}</small>
             <small>BMS protocol: ${escapeHtml({ bacnet: "BACnet", restAPIBacnet: "REST API BACnet" }[connection.protocol] || connection.protocol || "Not set")}</small>
           </span><span class="nav-chevron" aria-hidden="true">›</span>
         </button>`),
@@ -693,6 +760,7 @@ function render() {
   renderCategoryPage();
   const view = state.selectedView;
   $(".global-section").hidden = view !== "global";
+  $("#bms-objects-section").hidden = view !== "global" || !state.selectedConnection || !state.config.connections[state.selectedConnection];
   $("#device-editor").hidden = view !== "device";
   $("#schedule-global-editor").hidden = view !== "schedule-global";
   $("#zone-editor").hidden = view !== "zone";
@@ -1029,6 +1097,8 @@ async function loadConfig() {
     state.config = defaultConfig();
     showNotice("The server could not be reached. Changes will not persist until it is running.", "error");
   }
+  state.configLoaded = true;
+  inferNetworkWhenUnsaved();
   render();
 }
 
@@ -1129,14 +1199,10 @@ function clearLog(logId) {
 }
 
 function readMqttForm() {
-  return {
-    server: $("#mqtt-server").value,
-    port: $("#mqtt-port").value,
-    username: $("#mqtt-username").value,
-    password: $("#mqtt-password").value,
-    topic: $("#mqtt-topic").value,
-    autoConnect: $("#mqtt-auto-connect").checked
-  };
+  const form = {};
+  for (const field of MQTT_TEXT_FIELDS) form[field] = $(`#mqtt-${field}`).value;
+  form.autoConnect = $("#mqtt-auto-connect").checked;
+  return form;
 }
 
 async function saveMqttSettings() {
@@ -1157,12 +1223,18 @@ async function loadMqttSettings() {
     const response = await fetch("/api/mqtt/settings");
     if (!response.ok) return;
     const settings = await response.json();
-    for (const field of ["server", "port", "username", "password", "topic"]) {
+    for (const field of MQTT_TEXT_FIELDS) {
       if (settings[field]) $(`#mqtt-${field}`).value = settings[field];
     }
     $("#mqtt-auto-connect").checked = settings.autoConnect === true;
+    state.mqttNetworkSaved = Boolean(settings.networkServer);
+    toggleChirpstackFields();
+    if (state.mqttNetworkSaved) applyNetworkPrefill(true);
   } catch {
     // Saved settings are optional.
+  } finally {
+    state.mqttLoaded = true;
+    inferNetworkWhenUnsaved();
   }
 }
 
@@ -1221,6 +1293,17 @@ document.addEventListener("change", (event) => {
   const input = event.target;
   if (input.matches("#global-form [data-connection-field]")) {
     setConnectionValue(input.dataset.connectionField, inputValue(input));
+    return;
+  }
+  if (input.matches("#mqtt-networkServer")) {
+    applyNetworkPrefill();
+    toggleChirpstackFields();
+    syncAssignedConnections();
+    render();
+    return;
+  }
+  if (input.matches("#mqtt-chirpstack-fields input")) {
+    syncAssignedConnections();
     return;
   }
   if (input.matches("#connection-name")) {
@@ -1435,6 +1518,22 @@ document.addEventListener("click", async (event) => {
         }
         break;
       }
+      case "get-bms-objects": {
+        const connectionName = state.selectedConnection;
+        const connection = state.config.connections[connectionName];
+        if (!connection) break;
+        state.bmsObjects ||= {};
+        state.bmsObjects[connectionName] = { loading: true };
+        render();
+        try {
+          const response = await fetch("/api/bms/objects", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(connection) });
+          const result = await response.json();
+          state.bmsObjects[connectionName] = response.ok ? { values: result.values, schedules: result.schedules } : { error: result.error || "Reading the object list failed." };
+        } catch (error) {
+          state.bmsObjects[connectionName] = { error: error.message };
+        }
+        break;
+      }
       case "test-ical": {
         const zone = state.config.zonesSchedules.zones[state.selectedZone];
         if (!zone) break;
@@ -1559,6 +1658,8 @@ document.addEventListener("click", async (event) => {
       state.config.deviceProfiles = imported;
       state.config.connections = importedConnections.connections;
       state.config.deviceConnections = importedConnections.deviceConnections;
+      inferNetworkFromProfiles(imported);
+      syncAssignedConnections();
       state.expandedDevices = {};
       state.expandedObjects = {};
       state.selectedDevice = Object.keys(imported)[0] || null;
@@ -1633,10 +1734,14 @@ $("#import-file").addEventListener("change", async (event) => {
         candidate.deviceConnections = bmsData.deviceConnections;
       }
     }
+    const importedMqtt = imported.mqtt;
+    const importNetwork = importedMqtt?.networkServer
+      ? { networkServer: importedMqtt.networkServer, grpcApiKey: importedMqtt.grpcApiKey, serverAddress: importedMqtt.serverAddress, grpcPort: importedMqtt.grpcPort }
+      : (imported.deviceProfiles !== undefined ? networkFromProfiles(candidate.deviceProfiles) : null) || networkSettings();
     for (const [deviceName, device] of Object.entries(candidate.deviceProfiles)) {
       const connectionName = candidate.deviceConnections?.[deviceName] || device.controller?.connectionName || "";
       candidate.deviceConnections[deviceName] = connectionName;
-      applyConnection(device, candidate.connections[connectionName], connectionName);
+      applyConnection(device, candidate.connections[connectionName], connectionName, importNetwork);
     }
     if (imported.zonesSchedules !== undefined) {
       if (!imported.zonesSchedules || typeof imported.zonesSchedules !== "object" || Array.isArray(imported.zonesSchedules)) {
@@ -1666,9 +1771,11 @@ $("#import-file").addEventListener("change", async (event) => {
     }
 
     state.config = candidate;
+    if (importNetwork) showNetworkSettings(importNetwork);
+    if (importedMqtt?.networkServer) state.mqttNetworkSaved = true;
     if (mqttSettings !== undefined) {
-      for (const field of ["server", "port", "username", "password", "topic"]) {
-        if (mqttSettings[field] !== undefined) $(`#mqtt-${field}`).value = String(mqttSettings[field]);
+      for (const field of MQTT_TEXT_FIELDS) {
+        if (field !== "networkServer" && mqttSettings[field] !== undefined) $(`#mqtt-${field}`).value = String(mqttSettings[field]);
       }
       if (mqttSettings.autoConnect !== undefined) $("#mqtt-auto-connect").checked = mqttSettings.autoConnect === true;
     }

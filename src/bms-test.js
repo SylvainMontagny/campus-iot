@@ -44,7 +44,7 @@ async function testBacnet(connection, { createClient, timeout = TEST_TIMEOUT_MS 
   // The shared client owns UDP 47808: a second client could not receive the BMS replies.
   const client = createClient ? await createClient() : getClient(timeout);
   const ownsClient = Boolean(createClient);
-  client.on?.("error", () => {});
+  if (ownsClient) client.on?.("error", () => {});
   let timer;
   try {
     const timeoutPromise = new Promise((_resolve, reject) => {

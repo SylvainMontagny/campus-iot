@@ -70,6 +70,7 @@
           <label class="field profile-name-field"><span>Connection name</span><input id="connection-name" type="text" autocomplete="off"></label>
           <div id="global-form" class="field-grid"></div>
         </section>
+        <section id="bms-objects-section" class="config-section bms-objects" aria-live="polite" hidden></section>
 
         <section id="device-editor" class="config-section device-section" aria-live="polite" hidden></section>
         <section id="schedule-global-editor" aria-live="polite" hidden></section>
@@ -81,6 +82,16 @@
             <span id="mqtt-section-state" class="mqtt-section-state is-disconnected">Disconnected</span>
           </div>
           <div class="field-grid mqtt-fields">
+            <div class="field-row">
+              <label class="field"><span>LoRaWAN Network server</span>
+                <select id="mqtt-networkServer">
+                  <option value="ttn" selected>The Things Stack (TTN)</option>
+                  <option value="tts">The Things Stack (TTS)</option>
+                  <option value="chirpstack">ChirpStack</option>
+                  <option value="actility">Actility</option>
+                </select>
+              </label>
+            </div>
             <div class="field-pair">
               <label class="field"><span>Server</span><input id="mqtt-server" type="text" placeholder="broker.example.org" autocomplete="url"></label>
               <label class="field"><span>Port</span><input id="mqtt-port" type="number" min="1" max="65535" value="1883" inputmode="numeric"></label>
@@ -91,6 +102,15 @@
             </div>
             <div class="field-row">
               <label class="field"><span>Topic</span><input id="mqtt-topic" type="text" placeholder="#" autocomplete="off"></label>
+            </div>
+            <div id="mqtt-chirpstack-fields" class="field-grid" hidden>
+              <div class="field-row">
+                <label class="field"><span>gRPC API key</span><input id="mqtt-grpcApiKey" type="password" autocomplete="off"></label>
+              </div>
+              <div class="field-pair">
+                <label class="field"><span>Server address</span><input id="mqtt-serverAddress" type="text" autocomplete="off"></label>
+                <label class="field"><span>gRPC port</span><input id="mqtt-grpcPort" type="number" min="1" max="65535" value="8080" inputmode="numeric"></label>
+              </div>
             </div>
           </div>
           <div class="mqtt-actions">

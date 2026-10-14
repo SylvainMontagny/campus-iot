@@ -68,7 +68,9 @@ function buildMessage(device, downlinkPort, payload, log) {
     remapped[objects[objectName].lorawanPayloadName || objectName] = value;
   }
 
-  const { networkServer, flushDownlinkQueue } = device.lorawan;
+  const { networkServer: configuredServer, flushDownlinkQueue } = device.lorawan;
+  // The Things Stack (TTN) is processed exactly like TTS.
+  const networkServer = configuredServer === "ttn" ? "tts" : configuredServer;
   const topic = device.mqtt.topicDownlink;
 
   if (networkServer === "tts") {

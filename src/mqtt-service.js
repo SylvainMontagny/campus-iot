@@ -101,7 +101,7 @@ function mapIncomingPacket(topic, rawPayload, deviceProfiles) {
     };
   }
   const configuredNetworkServer = sourceDevice.lorawan?.networkServer;
-  if (configuredNetworkServer !== networkServer) {
+  if ((configuredNetworkServer === "ttn" ? "tts" : configuredNetworkServer) !== networkServer) {
     return {
       error: `Error: Network server mismatch (${deviceName}): payload comes from '${networkServer}' but device profile '${deviceProfile}' is configured for '${configuredNetworkServer}'`,
       details: { errorType: "networkServer", value: networkServer }
