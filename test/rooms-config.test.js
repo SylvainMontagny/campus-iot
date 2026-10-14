@@ -3,7 +3,7 @@ const assert = require("node:assert/strict");
 const { createDefaultRoomsSchedules, validateRoomsSchedules, resolveRooms } = require("../src/rooms-config");
 const { buildSpecialEvents } = require("../src/ical-schedule");
 
-const deviceList = {
+const deviceProfiles = {
   valve: {
     identity: { maxDevNum: 10 },
     bacnet: { objects: { setpoint: { dataDirection: "downlink" }, temperature: { dataDirection: "uplink" } } }
@@ -21,12 +21,12 @@ function makeData(room = {}) {
 }
 
 test("a complete room configuration is valid", () => {
-  assert.deepEqual(validateRoomsSchedules(makeData(), { deviceList, connections }), []);
+  assert.deepEqual(validateRoomsSchedules(makeData(), { deviceProfiles, connections }), []);
 });
 
 test("invalid rooms are reported with their path", () => {
   const data = makeData({ connectionName: "missing", devices: { valve: { deviceNums: [11], AVToBindName: "temperature" } } });
-  const paths = validateRoomsSchedules(data, { deviceList, connections }).map((error) => error.path);
+  const paths = validateRoomsSchedules(data, { deviceProfiles, connections }).map((error) => error.path);
   assert.deepEqual(paths.sort(), [
     "roomsSchedules.rooms.0.connectionName",
     "roomsSchedules.rooms.0.devices.valve.AVToBindName",
@@ -37,7 +37,7 @@ test("invalid rooms are reported with their path", () => {
 test("device numbers cannot be shared between rooms", () => {
   const data = makeData();
   data.rooms.push({ ...structuredClone(data.rooms[0]), scheduleName: "8D-121" });
-  const errors = validateRoomsSchedules(data, { deviceList, connections });
+  const errors = validateRoomsSchedules(data, { deviceProfiles, connections });
   assert.equal(errors.length, 1);
   assert.match(errors[0].message, /more than once/);
 });
@@ -45,7 +45,7 @@ test("device numbers cannot be shared between rooms", () => {
 test("log options must be booleans", () => {
   const data = makeData();
   data.icalToScheduleConf.logs.scheduleAVUpdate = "yes";
-  const errors = validateRoomsSchedules(data, { deviceList, connections });
+  const errors = validateRoomsSchedules(data, { deviceProfiles, connections });
   assert.deepEqual(errors.map((error) => error.path), ["roomsSchedules.icalToScheduleConf.logs"]);
 });
 

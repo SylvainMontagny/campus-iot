@@ -19,9 +19,9 @@ function validateConfig(config) {
     return [issue("Configuration must be a JSON object", "")];
   }
 
-  const deviceList = config.deviceList;
-  if (!deviceList || typeof deviceList !== "object" || Array.isArray(deviceList)) {
-    return [issue("Device list must be an object", "deviceList")];
+  const deviceProfiles = config.deviceProfiles;
+  if (!deviceProfiles || typeof deviceProfiles !== "object" || Array.isArray(deviceProfiles)) {
+    return [issue("Device profiles must be an object", "deviceProfiles")];
   }
 
   const connections = config.connections || {};
@@ -33,7 +33,7 @@ function validateConfig(config) {
     errors.push(issue("Device connection assignments must be an object", "deviceConnections"));
   }
 
-  const devices = Object.entries(deviceList);
+  const devices = Object.entries(deviceProfiles);
   for (const [deviceName, connectionName] of Object.entries(deviceConnections)) {
     if (connectionName && !Object.hasOwn(connections, connectionName)) {
       errors.push(issue(`Connection profile '${connectionName}' does not exist`, `deviceConnections.${deviceName}`));
@@ -41,8 +41,8 @@ function validateConfig(config) {
   }
 
   for (const [deviceName, device] of devices) {
-    const devicePath = `deviceList.${deviceName}`;
-    if (/\s/.test(deviceName)) errors.push(issue("Device type names cannot contain spaces", devicePath));
+    const devicePath = `deviceProfiles.${deviceName}`;
+    if (/\s/.test(deviceName)) errors.push(issue("Device profile names cannot contain spaces", devicePath));
     const bacnet = device?.bacnet;
     const objects = bacnet?.objects;
 
@@ -133,14 +133,14 @@ function validateConfig(config) {
     allocations.sort((left, right) => left.start - right.start);
     for (let index = 1; index < allocations.length; index += 1) {
       if (allocations[index - 1].end > allocations[index].start) {
-        errors.push(issue(`${kind === "AV" ? "Analog" : "Binary"} instance ranges overlap between ${allocations[index - 1].name} and ${allocations[index].name}`, "deviceList"));
+        errors.push(issue(`${kind === "AV" ? "Analog" : "Binary"} instance ranges overlap between ${allocations[index - 1].name} and ${allocations[index].name}`, "deviceProfiles"));
       }
     }
 
     for (const allocation of allocations) {
       for (const manual of manualInstances) {
         if (manual.instanceNum >= allocation.start && manual.instanceNum < allocation.end) {
-          errors.push(issue(`Manual instance ${manual.instanceNum} for ${manual.objectName} overlaps ${allocation.name}'s automatic range`, `deviceList.${manual.deviceName}.bacnet.objects.${manual.objectName}.instanceNum`));
+          errors.push(issue(`Manual instance ${manual.instanceNum} for ${manual.objectName} overlaps ${allocation.name}'s automatic range`, `deviceProfiles.${manual.deviceName}.bacnet.objects.${manual.objectName}.instanceNum`));
         }
       }
     }

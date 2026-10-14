@@ -44,8 +44,8 @@
         </div>
         <div class="rail-group">
           <div class="rail-title rail-title-lorawan">LoRaWAN to BACnet</div>
-          <nav id="device-navigation" class="device-navigation" aria-label="Device types"></nav>
-          <button id="add-device-button" class="add-device-button" type="button" data-action="add-device"><span aria-hidden="true">+</span> Add device type</button>
+          <nav id="device-navigation" class="device-navigation" aria-label="Device profiles"></nav>
+          <button id="add-device-button" class="add-device-button" type="button" data-action="add-device"><span aria-hidden="true">+</span> Add device profile</button>
         </div>
         <div class="rail-group">
           <div class="rail-title rail-title-rooms">Rooms &amp; Schedules</div>
@@ -120,9 +120,9 @@
 
     <dialog id="json-dialog" class="json-dialog">
       <form method="dialog" class="dialog-form">
-        <div class="dialog-heading"><div><h2>Edit device list configuration file</h2></div><button class="icon-button" value="cancel" aria-label="Close dialog">×</button></div>
+        <div class="dialog-heading"><div><h2>Edit device profiles configuration file</h2></div><button class="icon-button" value="cancel" aria-label="Close dialog">×</button></div>
         <p class="dialog-copy">Changes are checked before they are applied</p>
-        <textarea id="json-input" class="code-input json-editor" spellcheck="false" aria-label="Device list JSON"></textarea>
+        <textarea id="json-input" class="code-input json-editor" spellcheck="false" aria-label="Device profiles JSON"></textarea>
         <div id="json-errors" class="inline-error" hidden></div>
         <div class="dialog-actions"><button class="button button-outline" value="cancel">Cancel</button><button id="apply-json-button" class="button button-primary" type="button">Apply JSON</button></div>
       </form>

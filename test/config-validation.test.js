@@ -31,15 +31,15 @@ test("empty default configuration is valid", () => {
 
 test("rejects malformed IPv4 addresses when devices exist", () => {
   const config = createDefaultConfig();
-  config.deviceList.sensor = configuredDevice();
-  config.deviceList.sensor.controller.ipAddress = "300.0.0.1";
+  config.deviceProfiles.sensor = configuredDevice();
+  config.deviceProfiles.sensor.controller.ipAddress = "300.0.0.1";
 
-  assert.ok(validateConfig(config).some((error) => error.path === "deviceList.sensor.controller.ipAddress"));
+  assert.ok(validateConfig(config).some((error) => error.path === "deviceProfiles.sensor.controller.ipAddress"));
 });
 
 test("rejects device assignments to missing connection profiles", () => {
   const config = createDefaultConfig();
-  config.deviceList.sensor = configuredDevice();
+  config.deviceProfiles.sensor = configuredDevice();
   config.deviceConnections.sensor = "Removed connection";
 
   assert.ok(validateConfig(config).some((error) => error.path === "deviceConnections.sensor"));
@@ -47,8 +47,8 @@ test("rejects device assignments to missing connection profiles", () => {
 
 test("accepts a downlink comparison that references an existing uplink", () => {
   const config = createDefaultConfig();
-  config.deviceList.sensor = configuredDevice();
-  config.deviceList.sensor.bacnet.objects.setpoint = {
+  config.deviceProfiles.sensor = configuredDevice();
+  config.deviceProfiles.sensor.bacnet.objects.setpoint = {
     objectType: "analogValue",
     dataDirection: "downlink",
     assignementMode: "auto",
@@ -63,8 +63,8 @@ test("accepts a downlink comparison that references an existing uplink", () => {
 
 test("rejects an unknown downlink comparison target", () => {
   const config = createDefaultConfig();
-  config.deviceList.sensor = configuredDevice();
-  config.deviceList.sensor.bacnet.objects.setpoint = {
+  config.deviceProfiles.sensor = configuredDevice();
+  config.deviceProfiles.sensor.bacnet.objects.setpoint = {
     objectType: "analogValue",
     dataDirection: "downlink",
     assignementMode: "auto",
@@ -79,8 +79,8 @@ test("rejects an unknown downlink comparison target", () => {
 
 test("rejects auto objects of the same type sharing an instance number offset", () => {
   const config = createDefaultConfig();
-  config.deviceList.sensor = configuredDevice();
-  config.deviceList.sensor.bacnet.objects.humidity = {
+  config.deviceProfiles.sensor = configuredDevice();
+  config.deviceProfiles.sensor.bacnet.objects.humidity = {
     objectType: "analogValue",
     dataDirection: "uplink",
     assignementMode: "auto",
@@ -88,13 +88,13 @@ test("rejects auto objects of the same type sharing an instance number offset", 
     lorawanPayloadName: "sensor.humidity"
   };
 
-  assert.ok(validateConfig(config).some((error) => error.path === "deviceList.sensor.bacnet.objects.humidity.instanceNum"));
+  assert.ok(validateConfig(config).some((error) => error.path === "deviceProfiles.sensor.bacnet.objects.humidity.instanceNum"));
 });
 
 test("allows an analog value and a binary value to share the same instance number offset", () => {
   const config = createDefaultConfig();
-  config.deviceList.sensor = configuredDevice();
-  config.deviceList.sensor.bacnet.objects.alarm = {
+  config.deviceProfiles.sensor = configuredDevice();
+  config.deviceProfiles.sensor.bacnet.objects.alarm = {
     objectType: "binaryValue",
     dataDirection: "uplink",
     assignementMode: "auto",
@@ -107,8 +107,8 @@ test("allows an analog value and a binary value to share the same instance numbe
 
 test("rejects manual instances inside an automatic allocation range", () => {
   const config = createDefaultConfig();
-  config.deviceList.sensor = configuredDevice();
-  config.deviceList.manual = {
+  config.deviceProfiles.sensor = configuredDevice();
+  config.deviceProfiles.manual = {
     identity: { maxDevNum: 2 },
     controller: { ipAddress: "192.168.1.20" },
     bacnet: {

@@ -70,7 +70,7 @@ function validateRoomSettings(settings, basePath, errors) {
   check("weekly", (v) => v && typeof v === "object" && !Array.isArray(v), "Must be a JSON object");
 }
 
-function validateRoomsSchedules(data, { deviceList = {}, connections = {} } = {}) {
+function validateRoomsSchedules(data, { deviceProfiles = {}, connections = {} } = {}) {
   const errors = [];
   const conf = data?.icalToScheduleConf;
   if (!conf || typeof conf !== "object" || !Array.isArray(data.rooms)) {
@@ -130,15 +130,15 @@ function validateRoomsSchedules(data, { deviceList = {}, connections = {} } = {}
       errors.push(issue("Devices must be an object", `${roomPath}.devices`));
       return;
     }
-    for (const [type, device] of Object.entries(room.devices)) {
-      const devicePath = `${roomPath}.devices.${type}`;
-      const definition = deviceList[type];
+    for (const [profileName, device] of Object.entries(room.devices)) {
+      const devicePath = `${roomPath}.devices.${profileName}`;
+      const definition = deviceProfiles[profileName];
       if (!definition) {
-        errors.push(issue(`Device type '${type}' does not exist`, devicePath));
+        errors.push(issue(`Device profile '${profileName}' does not exist`, devicePath));
         continue;
       }
       const object = definition.bacnet?.objects?.[device?.AVToBindName];
-      if (!object) errors.push(issue(`Object '${device?.AVToBindName}' does not exist in '${type}'`, `${devicePath}.AVToBindName`));
+      if (!object) errors.push(issue(`Object '${device?.AVToBindName}' does not exist in '${profileName}'`, `${devicePath}.AVToBindName`));
       else if (object.dataDirection !== "downlink") errors.push(issue(`'${device.AVToBindName}' is not a downlink object`, `${devicePath}.AVToBindName`));
 
       const numbers = device?.deviceNums;
@@ -147,12 +147,12 @@ function validateRoomsSchedules(data, { deviceList = {}, connections = {} } = {}
         errors.push(issue(`Device numbers must be whole numbers from 1 to ${maxDevNum}`, `${devicePath}.deviceNums`));
         continue;
       }
-      usedNumbers[type] = (usedNumbers[type] || []).concat(numbers);
+      usedNumbers[profileName] = (usedNumbers[profileName] || []).concat(numbers);
     }
   });
 
-  for (const [type, numbers] of Object.entries(usedNumbers)) {
-    if (new Set(numbers).size !== numbers.length) errors.push(issue(`${type}: a device number is used more than once`, "In ROOMS & SCHEDULES"));
+  for (const [profileName, numbers] of Object.entries(usedNumbers)) {
+    if (new Set(numbers).size !== numbers.length) errors.push(issue(`${profileName}: a device number is used more than once`, "In ROOMS & SCHEDULES"));
   }
   return errors;
 }

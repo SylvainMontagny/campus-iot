@@ -5,7 +5,7 @@ const os = require("node:os");
 const path = require("node:path");
 const { readConfig, writeConfig, applyConnectionsToDevices } = require("../server");
 
-test("stores only the device map in deviceList.json", async (context) => {
+test("stores only the device profile map in deviceProfiles.json", async (context) => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), "lorabac-config-"));
   context.after(() => fs.rm(directory, { recursive: true, force: true }));
 
@@ -24,7 +24,7 @@ test("stores only the device map in deviceList.json", async (context) => {
       }
     },
     deviceConnections: { sensor: "Office" },
-    deviceList: {
+    deviceProfiles: {
       sensor: {
         identity: { maxDevNum: 4 },
         controller: {
@@ -40,24 +40,24 @@ test("stores only the device map in deviceList.json", async (context) => {
   };
 
   await writeConfig(config, directory);
-  const fileContent = await fs.readFile(path.join(directory, "deviceList.json"), "utf8");
-  assert.deepEqual(JSON.parse(fileContent), config.deviceList);
+  const fileContent = await fs.readFile(path.join(directory, "deviceProfiles.json"), "utf8");
+  assert.deepEqual(JSON.parse(fileContent), config.deviceProfiles);
   assert.equal(fileContent.includes("globalConfig"), false);
 
   const materialized = applyConnectionsToDevices(config);
-  assert.equal(materialized.deviceList.sensor.controller.ipAddress, "10.20.30.40");
-  assert.equal(materialized.deviceList.sensor.controller.login, "operator");
-  assert.equal(materialized.deviceList.sensor.controller.connectionName, "Office");
-  assert.equal(config.deviceList.sensor.controller.ipAddress, "192.168.1.10");
+  assert.equal(materialized.deviceProfiles.sensor.controller.ipAddress, "10.20.30.40");
+  assert.equal(materialized.deviceProfiles.sensor.controller.login, "operator");
+  assert.equal(materialized.deviceProfiles.sensor.controller.connectionName, "Office");
+  assert.equal(config.deviceProfiles.sensor.controller.ipAddress, "192.168.1.10");
   await writeConfig(materialized, directory);
-  const savedDeviceList = JSON.parse(await fs.readFile(path.join(directory, "deviceList.json"), "utf8"));
-  assert.equal(savedDeviceList.sensor.controller.ipAddress, "10.20.30.40");
+  const savedDeviceProfiles = JSON.parse(await fs.readFile(path.join(directory, "deviceProfiles.json"), "utf8"));
+  assert.equal(savedDeviceProfiles.sensor.controller.ipAddress, "10.20.30.40");
   const savedConnections = JSON.parse(await fs.readFile(path.join(directory, "bms-connections.json"), "utf8"));
   assert.equal(savedConnections["bms-connections"].Office.ipAddress, "10.20.30.40");
 
   const restored = await readConfig(directory);
-  assert.deepEqual(restored.deviceList, savedDeviceList);
-  assert.equal(restored.deviceList.sensor.controller.connectionName, "Office");
+  assert.deepEqual(restored.deviceProfiles, savedDeviceProfiles);
+  assert.equal(restored.deviceProfiles.sensor.controller.connectionName, "Office");
   assert.equal(restored.connections.Office.ipAddress, "10.20.30.40");
   assert.equal(restored.connections.Office.bacnetLogin, "operator");
   assert.equal(restored.connections.Unused.ipAddress, "10.20.30.41");
@@ -73,7 +73,7 @@ test("uses controller.connectionName as the profile assignment fallback", () => 
         networkServer: "tts"
       }
     },
-    deviceList: {
+    deviceProfiles: {
       sensor: {
         controller: { connectionName: "Office" },
         lorawan: {},
@@ -84,26 +84,58 @@ test("uses controller.connectionName as the profile assignment fallback", () => 
 
   const result = applyConnectionsToDevices(config);
   assert.equal(result.deviceConnections.sensor, "Office");
-  assert.equal(result.deviceList.sensor.controller.connectionName, "Office");
-  assert.equal(result.deviceList.sensor.controller.ipAddress, "192.168.1.10");
+  assert.equal(result.deviceProfiles.sensor.controller.connectionName, "Office");
+  assert.equal(result.deviceProfiles.sensor.controller.ipAddress, "192.168.1.10");
 });
 
-test("ignores legacy config.json when deviceList.json is missing", async (context) => {
+test("ignores legacy config.json when deviceProfiles.json is missing", async (context) => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), "lorabac-legacy-config-"));
   context.after(() => fs.rm(directory, { recursive: true, force: true }));
   await fs.writeFile(path.join(directory, "config.json"), JSON.stringify({
     globalConfig: { ipAddress: "10.0.0.1" },
-    deviceList: { legacyDevice: {} }
+    deviceProfiles: { legacyDevice: {} }
   }));
 
   const config = await readConfig(directory);
   assert.deepEqual(config, require("../src/default-config").createDefaultConfig());
 });
 
+test("reads legacy deviceList.json and upgrades identity.deviceType", async (context) => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), "lorabac-device-list-migration-"));
+  context.after(() => fs.rm(directory, { recursive: true, force: true }));
+  await fs.writeFile(path.join(directory, "deviceList.json"), JSON.stringify({
+    sensor: {
+      identity: { maxDevNum: 4, deviceType: "sensor" },
+      controller: { ipAddress: "192.168.1.10", protocol: "bacnet" },
+      lorawan: { networkServer: "tts" },
+      bacnet: { objects: {} }
+    }
+  }));
+
+  const config = await readConfig(directory);
+  assert.equal(config.deviceProfiles.sensor.identity.deviceProfile, "sensor");
+  assert.equal(Object.hasOwn(config.deviceProfiles.sensor.identity, "deviceType"), false);
+  assert.equal(Object.hasOwn(config, "deviceList"), false);
+});
+
+test("normalizes legacy deviceList and identity.deviceType API fields", () => {
+  const config = {
+    deviceList: {
+      sensor: { identity: { deviceType: "sensor" }, controller: {}, lorawan: {}, bacnet: { objects: {} } }
+    }
+  };
+
+  const normalized = applyConnectionsToDevices(config);
+  assert.equal(normalized.deviceProfiles.sensor.identity.deviceProfile, "sensor");
+  assert.equal(Object.hasOwn(normalized, "deviceList"), false);
+  assert.equal(Object.hasOwn(normalized.deviceProfiles.sensor.identity, "deviceType"), false);
+  assert.equal(Object.hasOwn(config, "deviceList"), true);
+});
+
 test("reconstructs separate named profiles from device settings", async (context) => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), "lorabac-device-settings-"));
   context.after(() => fs.rm(directory, { recursive: true, force: true }));
-  const deviceList = {
+  const deviceProfiles = {
     office: {
       controller: { ipAddress: "192.168.1.10", protocol: "bacnet" },
       lorawan: { networkServer: "tts" }
@@ -113,7 +145,7 @@ test("reconstructs separate named profiles from device settings", async (context
       lorawan: { networkServer: "chirpstack", chirpstack: { grpcApiKey: "api-key", serverAddress: "chirpstack.local", grpcPort: 8080 } }
     }
   };
-  await fs.writeFile(path.join(directory, "deviceList.json"), JSON.stringify(deviceList));
+  await fs.writeFile(path.join(directory, "deviceProfiles.json"), JSON.stringify(deviceProfiles));
 
   const migrated = await readConfig(directory);
   assert.equal(Object.keys(migrated.connections).length, 2);
@@ -121,10 +153,10 @@ test("reconstructs separate named profiles from device settings", async (context
   assert.equal(migrated.connections[migrated.deviceConnections.lab].ipAddress, "10.0.0.15");
 });
 
-test("restores named profiles from controller.connectionName in deviceList.json", async (context) => {
+test("restores named profiles from controller.connectionName in deviceProfiles.json", async (context) => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), "lorabac-named-profiles-"));
   context.after(() => fs.rm(directory, { recursive: true, force: true }));
-  const deviceList = {
+  const deviceProfiles = {
     office: {
       identity: { maxDevNum: 2 },
       controller: { connectionName: "Office LAN", ipAddress: "192.168.1.10", protocol: "bacnet" },
@@ -138,7 +170,7 @@ test("restores named profiles from controller.connectionName in deviceList.json"
       bacnet: { objects: {} }
     }
   };
-  await fs.writeFile(path.join(directory, "deviceList.json"), JSON.stringify(deviceList));
+  await fs.writeFile(path.join(directory, "deviceProfiles.json"), JSON.stringify(deviceProfiles));
 
   const restored = await readConfig(directory);
   assert.deepEqual(Object.keys(restored.connections).sort(), ["Lab LAN", "Office LAN"]);

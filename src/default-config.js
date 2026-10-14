@@ -1,6 +1,6 @@
 function createDefaultConfig() {
   return {
-    deviceList: {},
+    deviceProfiles: {},
     connections: {},
     deviceConnections: {}
   };

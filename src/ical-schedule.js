@@ -203,7 +203,7 @@ function createIcalScheduleService({ log = () => {} } = {}) {
     })));
   }
 
-  async function setupBindings(api, rooms, conf, deviceList) {
+  async function setupBindings(api, rooms, conf, deviceProfiles) {
     const existing = (await api.get("/services/events/bindings")).data;
     if (existing && typeof existing === "object") {
       await batch(api, Object.keys(existing).map((name) => ({
@@ -215,8 +215,8 @@ function createIcalScheduleService({ log = () => {} } = {}) {
     const offset = conf.scheduleAVInstanceOffset;
     const requests = [];
     for (const room of rooms) {
-      for (const [type, device] of Object.entries(room.devices)) {
-        const bacnet = deviceList[type].bacnet;
+      for (const [profileName, device] of Object.entries(room.devices)) {
+        const bacnet = deviceProfiles[profileName].bacnet;
         const objectOffset = bacnet.objects[device.AVToBindName].instanceNum;
         for (const number of device.deviceNums) {
           const avInstance = bacnet.instanceRangeAV * number + objectOffset + bacnet.offsetAV;
@@ -310,12 +310,12 @@ function createIcalScheduleService({ log = () => {} } = {}) {
   }
 
   /** Stops any running loops, then starts the schedule synchronisation for the given configuration. */
-  async function start({ icalToScheduleConf: conf, rooms: configuredRooms, deviceList, connections }) {
+  async function start({ icalToScheduleConf: conf, rooms: configuredRooms, deviceProfiles, connections }) {
     const run = ++generation;
     const active = () => run === generation;
     const data = { icalToScheduleConf: conf, rooms: configuredRooms };
 
-    const errors = validateRoomsSchedules(data, { deviceList, connections });
+    const errors = validateRoomsSchedules(data, { deviceProfiles, connections });
     if (errors.length) {
       log("error", `Rooms & Schedules not started: ${errors.map((error) => `${error.path}: ${error.message}`).join(" | ")}`);
       return;
@@ -335,7 +335,7 @@ function createIcalScheduleService({ log = () => {} } = {}) {
         log("info", `${name}: creating ${group.rooms.length} schedules, scheduleAV and bindings...`);
         await setupSchedules(group.api, group.rooms, conf);
         await setupScheduleAV(group.api, group.rooms, conf);
-        await setupBindings(group.api, group.rooms, conf, deviceList);
+        await setupBindings(group.api, group.rooms, conf, deviceProfiles);
       }
     } catch (error) {
       log("error", `Rooms & Schedules startup failed: ${error.message}`);

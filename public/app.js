@@ -40,7 +40,7 @@ function defaultRoomsSchedules() {
 
 function defaultConfig() {
   return {
-    deviceList: {},
+    deviceProfiles: {},
     connections: {},
     deviceConnections: {},
     roomsSchedules: defaultRoomsSchedules()
@@ -143,7 +143,7 @@ function applyConnection(device, connection, connectionName = "") {
 }
 
 function applyConnectionToAssignedDevices(connectionName) {
-  for (const [deviceName, device] of Object.entries(state.config.deviceList)) {
+  for (const [deviceName, device] of Object.entries(state.config.deviceProfiles)) {
     if (state.config.deviceConnections[deviceName] === connectionName) {
       applyConnection(device, state.config.connections[connectionName], connectionName);
     }
@@ -167,12 +167,12 @@ function connectionFromDevice(device) {
   };
 }
 
-function rebuildConnectionsFromDeviceList(deviceList) {
+function rebuildConnectionsFromDeviceProfiles(deviceProfiles) {
   const connections = {};
   const deviceConnections = {};
   let unnamedIndex = 1;
 
-  for (const [deviceName, device] of Object.entries(deviceList)) {
+  for (const [deviceName, device] of Object.entries(deviceProfiles)) {
     let connectionName = device.controller?.connectionName?.trim();
     if (!connectionName) {
       while (Object.hasOwn(connections, `Connection ${unnamedIndex}`)) unnamedIndex += 1;
@@ -204,7 +204,7 @@ function renderGlobal() {
     nameInput.value = "";
     nameInput.disabled = true;
     removeButton.disabled = true;
-    $("#global-form").innerHTML = `<div class="connection-empty"><h3>No connection profiles</h3><p>Create a named connection profile, then select it from a device type.</p><button class="button button-primary" type="button" data-action="add-connection">Add connection</button></div>`;
+    $("#global-form").innerHTML = `<div class="connection-empty"><h3>No connection profiles</h3><p>Create a named connection profile, then select it from a device profile.</p><button class="button button-primary" type="button" data-action="add-connection">Add connection</button></div>`;
     return;
   }
 
@@ -228,7 +228,7 @@ function renderGlobal() {
 }
 
 function renderNavigation() {
-  const entries = Object.entries(state.config.deviceList);
+  const entries = Object.entries(state.config.deviceProfiles);
   const connections = Object.entries(state.config.connections);
   if (!connections.some(([name]) => name === state.selectedConnection)) state.selectedConnection = connections[0]?.[0] ?? null;
   if (!entries.some(([name]) => name === state.selectedDevice)) state.selectedDevice = entries[0]?.[0] ?? null;
@@ -245,7 +245,7 @@ function renderNavigation() {
     </button>`).join("");
   $("#connection-navigation").innerHTML = connections.map(([name]) => `
     <button class="device-nav-item connection-nav-item${state.selectedView === "global" && name === state.selectedConnection ? " is-selected" : ""}" type="button" data-select-connection="${escapeHtml(name)}">
-      <span class="device-nav-copy"><strong>${escapeHtml(name)}</strong><small>Used by ${Object.values(state.config.deviceConnections).filter((assigned) => assigned === name).length} device types</small></span>
+      <span class="device-nav-copy"><strong>${escapeHtml(name)}</strong><small>Used by ${Object.values(state.config.deviceConnections).filter((assigned) => assigned === name).length} device profiles</small></span>
     </button>`).join("");
   $("#device-navigation").innerHTML = entries.map(([name, device]) => `
     <button class="device-nav-item${state.selectedView === "device" && name === state.selectedDevice ? " is-selected" : ""}" type="button" data-select-device="${escapeHtml(name)}">
@@ -258,18 +258,18 @@ function renderDevice() {
   const container = $("#device-editor");
   const name = state.selectedDevice;
   if (!name) {
-    container.innerHTML = `<div class="empty-state"><div class="empty-symbol" aria-hidden="true">+</div><h2>No device types yet</h2><p>Add a device type to define its LoRaWAN fleet and BACnet points.</p><button class="button button-primary" type="button" data-action="add-device">Add device type</button></div>`;
+    container.innerHTML = `<div class="empty-state"><div class="empty-symbol" aria-hidden="true">+</div><h2>No device profiles yet</h2><p>Add a device profile to define its LoRaWAN fleet and BACnet points.</p><button class="button button-primary" type="button" data-action="add-device">Add device profile</button></div>`;
     return;
   }
 
-  const device = state.config.deviceList[name];
+  const device = state.config.deviceProfiles[name];
   const objects = device.bacnet.objects || {};
   const debug = device.controller.debug || [];
   const deviceExpanded = Boolean(state.expandedDevices[name]);
   const assignedConnection = state.config.deviceConnections[name] || "";
   const connectionOptions = [["", "No connection profile"], ...Object.keys(state.config.connections).map((connectionName) => [connectionName, connectionName])];
   const deviceFields = [
-    `<div class="field-row">${inputField("Device type name", "_name", name)}</div>`,
+    `<div class="field-row">${inputField("Device profile name", "_name", name)}</div>`,
     `<div class="field-row">${selectField("LoRaWAN class", "lorawan.class", device.lorawan?.class || "A", [["A", "Class A"], ["B", "Class B"], ["C", "Class C"]])}</div>`,
     `<div class="field-row">${selectField("BMS connection", "deviceConnection", assignedConnection, connectionOptions).replace("data-path=", "data-device-connection=")}</div>`,
     `<div class="field-row">${inputField("Maximum number of this device", "identity.maxDevNum", device.identity?.maxDevNum, { type: "number", min: 1, step: 1 })}</div>`,
@@ -287,13 +287,15 @@ function renderDevice() {
   }
 
   container.innerHTML = `
-    <div class="section-heading device-heading"><div><h2>LoRaWAN device configuration</h2></div></div>
+    <div class="section-heading device-heading"><div><h2>LoRaWAN device profile configuration</h2></div></div>
     <section class="device-card${deviceExpanded ? " is-expanded" : ""}">
       <div class="panel-heading-row">
         <button class="panel-toggle" type="button" data-panel-toggle="device" aria-expanded="${deviceExpanded}" aria-controls="device-config-panel">
           <span class="panel-chevron" aria-hidden="true">${deviceExpanded ? "−" : "+"}</span>
-          <span class="panel-heading-copy"><span class="eyebrow">DEVICE TYPE</span><strong>${escapeHtml(name)}</strong></span>
+          <span class="panel-heading-copy"><span class="eyebrow">DEVICE PROFILE</span><strong>${escapeHtml(name)}</strong></span>
           <span class="mono-tag">${escapeHtml((device.lorawan.networkServer || "unassigned").toUpperCase())}</span>
+          <span class="mono-tag">CLASS ${escapeHtml((device.lorawan?.class || "A").toUpperCase())}</span>
+          <span class="mono-tag">${escapeHtml(assignedConnection || "NO BMS CONNECTION")}</span>
           <span class="panel-summary-count">${Object.keys(objects).length} objects</span>
         </button>
         <button class="button button-danger-quiet" type="button" data-action="delete-device">Remove</button>
@@ -319,7 +321,7 @@ function renderObject(name, object) {
   const objectExpanded = Boolean(state.expandedObjects[objectKey]);
   const range = Array.isArray(object.range) ? object.range : [0, 100];
   const instanceLabel = object.assignementMode === "manual" ? "Instance number" : "Instance number offset";
-  const uplinkNames = Object.entries(state.config.deviceList[state.selectedDevice]?.bacnet?.objects || {})
+  const uplinkNames = Object.entries(state.config.deviceProfiles[state.selectedDevice]?.bacnet?.objects || {})
     .filter(([, candidate]) => candidate.dataDirection === "uplink")
     .map(([candidateName]) => candidateName);
   if (object.uplinkToCompareWith && !uplinkNames.includes(object.uplinkToCompareWith)) uplinkNames.push(object.uplinkToCompareWith);
@@ -443,8 +445,8 @@ function applyScheduleSetting(target, input, key) {
   render();
 }
 
-function downlinkObjectNames(deviceType) {
-  return Object.entries(state.config.deviceList[deviceType]?.bacnet?.objects || {})
+function downlinkObjectNames(deviceProfile) {
+  return Object.entries(state.config.deviceProfiles[deviceProfile]?.bacnet?.objects || {})
     .filter(([, object]) => object.dataDirection === "downlink")
     .map(([name]) => name);
 }
@@ -489,26 +491,26 @@ function renderRoom() {
   if (room.connectionName && !connectionNames.includes(room.connectionName)) connectionNames.push(room.connectionName);
   const connectionOptions = [["", "Select a BMS connection"], ...connectionNames.map((name) => [name, name])];
   const grouped = (room.groupEvents ?? defaults.groupEvents) === true;
-  const deviceTypes = Object.keys(state.config.deviceList);
+  const deviceProfiles = Object.keys(state.config.deviceProfiles);
 
-  const deviceRows = Object.entries(room.devices).map(([type, device]) => {
-    const typeNames = deviceTypes.includes(type) ? deviceTypes : [type, ...deviceTypes];
-    const downlinkNames = downlinkObjectNames(type);
+  const deviceRows = Object.entries(room.devices).map(([profileName, device]) => {
+    const profileNames = deviceProfiles.includes(profileName) ? deviceProfiles : [profileName, ...deviceProfiles];
+    const downlinkNames = downlinkObjectNames(profileName);
     if (device.AVToBindName && !downlinkNames.includes(device.AVToBindName)) downlinkNames.push(device.AVToBindName);
     const deviceField = (html) => html.replace("data-path=", "data-room-device-field=");
-    const deviceExpanded = Boolean(state.expandedRoomDevices[`${state.selectedRoom}::${type}`]);
-    const deviceCount = (device.deviceNums || []).length;
-    return `<article class="object-card${deviceExpanded ? " is-expanded" : ""}" data-room-device="${escapeHtml(type)}">
+    const deviceExpanded = Boolean(state.expandedRoomDevices[`${state.selectedRoom}::${profileName}`]);
+    const deviceNumbers = device.deviceNums || [];
+    return `<article class="object-card${deviceExpanded ? " is-expanded" : ""}" data-room-device="${escapeHtml(profileName)}">
       <div class="object-card-heading">
-        <button class="panel-toggle object-panel-toggle" type="button" data-panel-toggle="roomDevice" data-device-type="${escapeHtml(type)}" aria-expanded="${deviceExpanded}">
+        <button class="panel-toggle object-panel-toggle" type="button" data-panel-toggle="roomDevice" data-device-profile="${escapeHtml(profileName)}" aria-expanded="${deviceExpanded}">
           <span class="panel-chevron" aria-hidden="true">${deviceExpanded ? "−" : "+"}</span>
-          <span class="object-title"><span class="object-type-mark mark-down" aria-hidden="true">↓</span><span class="object-title-copy"><strong>${escapeHtml(type)}</strong><small>${escapeHtml(device.AVToBindName || "No object selected")}</small></span></span>
-          <span class="panel-summary-count">${deviceCount} ${deviceCount === 1 ? "device" : "devices"}</span>
+          <span class="object-title"><span class="object-type-mark mark-down" aria-hidden="true">↓</span><span class="object-title-copy"><strong>${escapeHtml(profileName)}</strong><small>${escapeHtml(device.AVToBindName || "No object selected")}</small></span></span>
+          <span class="panel-summary-count room-device-numbers">Device: ${escapeHtml(deviceNumbers.join(", ") || "none")}</span>
         </button>
-        <button class="button button-danger-quiet button-compact" type="button" data-action="delete-room-device" data-device-type="${escapeHtml(type)}">Remove</button>
+        <button class="button button-danger-quiet button-compact" type="button" data-action="delete-room-device" data-device-profile="${escapeHtml(profileName)}">Remove</button>
       </div>
       <div class="object-card-body"${deviceExpanded ? "" : " hidden"}><div class="field-grid">
-        <div class="field-row">${deviceField(selectField("LoRaWAN device type", "type", type, typeNames.map((name) => [name, name])))}</div>
+        <div class="field-row">${deviceField(selectField("LoRaWAN device profile", "profile", profileName, profileNames.map((name) => [name, name])))}</div>
         <div class="field-row">${deviceField(inputField("Device numbers (comma separated)", "deviceNums", (device.deviceNums || []).join(", "), { placeholder: "2, 5, 10" }))}</div>
         <div class="field-row">${deviceField(selectField("AVToBindName (downlink object)", "AVToBindName", device.AVToBindName || "", [["", "Select a downlink object"], ...downlinkNames.map((name) => [name, name])]))}</div>
       </div></div>
@@ -522,7 +524,7 @@ function renderRoom() {
       <div class="field-grid">
         <div class="field-row">${roomField(inputField("Room / schedule name", "scheduleName", room.scheduleName))}</div>
         <div class="field-row">${roomField(selectField("On which BMS will be BACnet schedule object?", "connectionName", room.connectionName || "", connectionOptions))}</div>
-        <div class="field-row">${roomField(inputField("iCal URL", "url", room.url, { placeholder: "https://" }))}</div>
+        <div class="field-row"><div class="room-url-test">${roomField(inputField("iCal URL", "url", room.url, { placeholder: "https://" }))}<button class="button button-primary" type="button" data-action="test-ical">Test</button></div></div>
       </div>
       ${advancedPanel(`room:${state.selectedRoom}`, `<div class="field-grid">${scheduleSettingRows(SCHEDULE_ROWS, (key) => room[key] ?? defaults[key], "data-room-field", false, grouped)}</div>`)}
     </section>
@@ -543,7 +545,11 @@ function handleRoomField(input) {
       return;
     }
     room.scheduleName = name;
-  } else if (key === "connectionName" || key === "url") {
+  } else if (key === "url") {
+    room.url = input.value.trim();
+    input.value = room.url;
+    return;
+  } else if (key === "connectionName") {
     room[key] = input.value.trim();
   } else {
     applyScheduleSetting(room, input, key);
@@ -554,27 +560,27 @@ function handleRoomField(input) {
 
 function handleRoomDeviceField(input) {
   const room = state.config.roomsSchedules.rooms[state.selectedRoom];
-  const type = input.closest("[data-room-device]").dataset.roomDevice;
+  const profileName = input.closest("[data-room-device]").dataset.roomDevice;
   const field = input.dataset.roomDeviceField;
-  if (field === "type") {
-    const newType = input.value;
-    if (newType !== type) {
-      if (Object.hasOwn(room.devices, newType)) {
-        showNotice(`Device type '${newType}' is already in this room.`, "error");
+  if (field === "profile") {
+    const newProfileName = input.value;
+    if (newProfileName !== profileName) {
+      if (Object.hasOwn(room.devices, newProfileName)) {
+        showNotice(`Device profile '${newProfileName}' is already in this room.`, "error");
       } else {
-        room.devices = Object.fromEntries(Object.entries(room.devices).map(([key, value]) => (key === type
-          ? [newType, { deviceNums: value.deviceNums, AVToBindName: downlinkObjectNames(newType)[0] || "" }]
+        room.devices = Object.fromEntries(Object.entries(room.devices).map(([key, value]) => (key === profileName
+          ? [newProfileName, { deviceNums: value.deviceNums, AVToBindName: downlinkObjectNames(newProfileName)[0] || "" }]
           : [key, value])));
-        state.expandedRoomDevices[`${state.selectedRoom}::${newType}`] = state.expandedRoomDevices[`${state.selectedRoom}::${type}`];
-        delete state.expandedRoomDevices[`${state.selectedRoom}::${type}`];
+        state.expandedRoomDevices[`${state.selectedRoom}::${newProfileName}`] = state.expandedRoomDevices[`${state.selectedRoom}::${profileName}`];
+        delete state.expandedRoomDevices[`${state.selectedRoom}::${profileName}`];
       }
     }
   } else if (field === "deviceNums") {
     const numbers = input.value.split(",").map((item) => item.trim()).filter(Boolean).map(Number);
     if (numbers.some((number) => !Number.isInteger(number) || number < 1)) showNotice("Device numbers must be whole numbers greater than 0, separated by commas.", "error");
-    else room.devices[type].deviceNums = numbers;
+    else room.devices[profileName].deviceNums = numbers;
   } else {
-    room.devices[type].AVToBindName = input.value;
+    room.devices[profileName].AVToBindName = input.value;
   }
   render();
 }
@@ -605,11 +611,26 @@ function render() {
 
 function showNotice(message, kind = "success") {
   const notice = $("#notice");
-  notice.textContent = message;
+  const text = document.createElement("span");
+  text.className = "notice-message";
+  text.textContent = message;
+  const closeButton = document.createElement("button");
+  closeButton.className = "notice-close";
+  closeButton.type = "button";
+  closeButton.setAttribute("aria-label", "Close notification");
+  closeButton.textContent = "×";
+  closeButton.addEventListener("click", dismissNotice);
+  notice.replaceChildren(text, closeButton);
   notice.className = `notice notice-${kind}`;
   notice.hidden = false;
   clearTimeout(state.noticeTimer);
-  state.noticeTimer = setTimeout(() => { notice.hidden = true; }, 5000);
+  state.noticeTimer = setTimeout(dismissNotice, 10000);
+}
+
+function dismissNotice() {
+  clearTimeout(state.noticeTimer);
+  state.noticeTimer = null;
+  $("#notice").hidden = true;
 }
 
 function inputValue(input) {
@@ -620,20 +641,20 @@ function inputValue(input) {
 function renameDevice(oldName, newName) {
   const safeName = newName;
   if (/\s/.test(safeName)) {
-    showNotice("Device type names cannot contain spaces.", "error");
+    showNotice("Device profile names cannot contain spaces.", "error");
     render();
     return;
   }
-  if (!safeName || (safeName !== oldName && Object.hasOwn(state.config.deviceList, safeName))) {
-    showNotice("Device type names must be unique and cannot be empty.", "error");
+  if (!safeName || (safeName !== oldName && Object.hasOwn(state.config.deviceProfiles, safeName))) {
+    showNotice("Device profile names must be unique and cannot be empty.", "error");
     render();
     return;
   }
   if (safeName !== oldName) {
-    state.config.deviceList[safeName] = state.config.deviceList[oldName];
-    delete state.config.deviceList[oldName];
+    state.config.deviceProfiles[safeName] = state.config.deviceProfiles[oldName];
+    delete state.config.deviceProfiles[oldName];
     state.config.deviceConnections[safeName] = state.config.deviceConnections[oldName] || "";
-    state.config.deviceList[safeName].controller.connectionName = state.config.deviceConnections[safeName];
+    state.config.deviceProfiles[safeName].controller.connectionName = state.config.deviceConnections[safeName];
     delete state.config.deviceConnections[oldName];
     state.expandedDevices[safeName] = state.expandedDevices[oldName] || false;
     delete state.expandedDevices[oldName];
@@ -659,7 +680,7 @@ function renameConnection(oldName, newName) {
     delete state.config.connections[oldName];
     for (const deviceName of Object.keys(state.config.deviceConnections)) {
       if (state.config.deviceConnections[deviceName] === oldName) state.config.deviceConnections[deviceName] = safeName;
-      if (state.config.deviceList[deviceName]?.controller) state.config.deviceList[deviceName].controller.connectionName = state.config.deviceConnections[deviceName];
+      if (state.config.deviceProfiles[deviceName]?.controller) state.config.deviceProfiles[deviceName].controller.connectionName = state.config.deviceConnections[deviceName];
     }
     state.selectedConnection = safeName;
   }
@@ -688,7 +709,7 @@ function renameObject(device, oldName, newName) {
 }
 
 function syncAssignedConnections() {
-  for (const [deviceName, device] of Object.entries(state.config.deviceList)) {
+  for (const [deviceName, device] of Object.entries(state.config.deviceProfiles)) {
     const connection = state.config.connections[state.config.deviceConnections[deviceName]];
     applyConnection(device, connection, state.config.deviceConnections[deviceName] || "");
   }
@@ -727,7 +748,7 @@ function mergeRooms(roomsSchedules) {
 function downloadConfig() {
   syncAssignedConnections();
   const files = [
-    ["deviceList.json", state.config.deviceList],
+    ["deviceProfiles.json", state.config.deviceProfiles],
     ["mqtt-connections.json", readMqttForm()],
     ["rooms-schedules.json", splitRooms(state.config.roomsSchedules)],
     ["bms-connections.json", {
@@ -836,10 +857,10 @@ async function readZip(file) {
   return result;
 }
 
-// Each BACnet object of the same type (analog/binary value) must have a distinct instance number within its device type.
+// Each BACnet object of the same type (analog/binary value) must have a distinct instance number within its device profile.
 function findDuplicateInstanceNumbers() {
   const conflicts = [];
-  for (const [deviceName, device] of Object.entries(state.config.deviceList || {})) {
+  for (const [deviceName, device] of Object.entries(state.config.deviceProfiles || {})) {
     const byType = new Map();
     for (const [objectName, object] of Object.entries(device.bacnet?.objects || {})) {
       const key = object.objectType;
@@ -879,7 +900,7 @@ async function saveConfig() {
     return;
   }
   const mqttSaved = await saveMqttSettings();
-  showNotice(mqttSaved ? "All configuration saved" : "Device list saved, but the MQTT connection could not be saved.", mqttSaved ? undefined : "error");
+  showNotice(mqttSaved ? "All configuration saved" : "Device profiles saved, but the MQTT connection could not be saved.", mqttSaved ? undefined : "error");
 }
 
 async function loadVersion() {
@@ -898,11 +919,11 @@ async function loadConfig() {
     state.config = await response.json();
     state.config.connections ||= {};
     state.config.deviceConnections ||= {};
-    state.config.deviceList ||= {};
+    state.config.deviceProfiles ||= {};
     state.config.roomsSchedules = mergeRooms(state.config.roomsSchedules || defaultRoomsSchedules());
     const scheduleConf = state.config.roomsSchedules.icalToScheduleConf;
     scheduleConf.logs = { ...defaultRoomsSchedules().icalToScheduleConf.logs, ...scheduleConf.logs };
-    for (const deviceName of Object.keys(state.config.deviceList)) state.config.deviceConnections[deviceName] ||= "";
+    for (const deviceName of Object.keys(state.config.deviceProfiles)) state.config.deviceConnections[deviceName] ||= "";
   } catch (error) {
     state.config = defaultConfig();
     showNotice("The server could not be reached. Changes will not persist until it is running.", "error");
@@ -1128,7 +1149,7 @@ document.addEventListener("change", (event) => {
     return;
   }
 
-  const device = state.config.deviceList[state.selectedDevice];
+  const device = state.config.deviceProfiles[state.selectedDevice];
   if (!device) return;
   if (input.matches("#device-editor [data-device-connection]")) {
     const connectionName = input.value;
@@ -1213,7 +1234,7 @@ document.addEventListener("click", async (event) => {
       panelToggle.closest(".device-card").querySelector(".device-card-body").hidden = !expanded;
       panelToggle.closest(".device-card").classList.toggle("is-expanded", expanded);
     } else if (panelToggle.dataset.panelToggle === "roomDevice") {
-      state.expandedRoomDevices[`${state.selectedRoom}::${panelToggle.dataset.deviceType}`] = expanded;
+      state.expandedRoomDevices[`${state.selectedRoom}::${panelToggle.dataset.deviceProfile}`] = expanded;
       panelToggle.closest(".object-card").querySelector(".object-card-body").hidden = !expanded;
       panelToggle.closest(".object-card").classList.toggle("is-expanded", expanded);
     } else if (panelToggle.dataset.panelToggle === "device") {
@@ -1263,30 +1284,30 @@ document.addEventListener("click", async (event) => {
 
   const actionButton = event.target.closest("[data-action]");
   if (actionButton) {
-    const device = state.config.deviceList[state.selectedDevice];
+    const device = state.config.deviceProfiles[state.selectedDevice];
     switch (actionButton.dataset.action) {
       case "add-device": {
         const base = "loraDevice";
         let index = 0;
         const letters = (n) => (n >= 26 ? letters(Math.floor(n / 26) - 1) : "") + String.fromCharCode(65 + (n % 26));
-        while (Object.hasOwn(state.config.deviceList, `${base}${letters(index)}`)) index += 1;
+        while (Object.hasOwn(state.config.deviceProfiles, `${base}${letters(index)}`)) index += 1;
         const name = `${base}${letters(index)}`;
         const connectionName = state.selectedConnection || Object.keys(state.config.connections)[0] || "";
-        state.config.deviceList[name] = makeDevice(name, connectionName);
+        state.config.deviceProfiles[name] = makeDevice(name, connectionName);
         state.expandedDevices[name] = true;
         state.selectedDevice = name;
         state.selectedView = "device";
         break;
       }
       case "delete-device":
-        if (device && confirm(`Remove device type '${state.selectedDevice}' and its objects?`)) {
-          delete state.config.deviceList[state.selectedDevice];
+        if (device && confirm(`Remove device profile '${state.selectedDevice}' and its objects?`)) {
+          delete state.config.deviceProfiles[state.selectedDevice];
           delete state.config.deviceConnections[state.selectedDevice];
           delete state.expandedDevices[state.selectedDevice];
           for (const key of Object.keys(state.expandedObjects)) {
             if (key.startsWith(`${state.selectedDevice}::`)) delete state.expandedObjects[key];
           }
-          state.selectedDevice = Object.keys(state.config.deviceList)[0] || null;
+          state.selectedDevice = Object.keys(state.config.deviceProfiles)[0] || null;
         }
         break;
       case "add-connection": {
@@ -1312,6 +1333,27 @@ document.addEventListener("click", async (event) => {
         }
         break;
       }
+      case "test-ical": {
+        const room = state.config.roomsSchedules.rooms[state.selectedRoom];
+        if (!room) break;
+        actionButton.disabled = true;
+        showNotice("Testing iCalendar URL…", "success");
+        try {
+          const response = await fetch("/api/rooms/test-ical", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ url: room.url })
+          });
+          const result = await response.json();
+          if (!response.ok) throw new Error(result.error || "iCalendar URL test failed.");
+          showNotice(result.message, "success");
+        } catch (error) {
+          showNotice(error.message, "error");
+        } finally {
+          actionButton.disabled = false;
+        }
+        break;
+      }
       case "delete-connection":
         if (state.selectedConnection && confirm(`Remove connection '${state.selectedConnection}'? Assigned devices will keep their current settings.`)) {
           const removedName = state.selectedConnection;
@@ -1319,7 +1361,7 @@ document.addEventListener("click", async (event) => {
           for (const deviceName of Object.keys(state.config.deviceConnections)) {
             if (state.config.deviceConnections[deviceName] === removedName) {
               state.config.deviceConnections[deviceName] = "";
-              if (state.config.deviceList[deviceName]?.controller) state.config.deviceList[deviceName].controller.connectionName = "";
+              if (state.config.deviceProfiles[deviceName]?.controller) state.config.deviceProfiles[deviceName].controller.connectionName = "";
             }
           }
           state.selectedConnection = Object.keys(state.config.connections)[0] || null;
@@ -1360,18 +1402,18 @@ document.addEventListener("click", async (event) => {
       }
       case "add-room-device": {
         const room = state.config.roomsSchedules.rooms[state.selectedRoom];
-        const type = Object.keys(state.config.deviceList).find((name) => !Object.hasOwn(room.devices, name));
-        if (!type) {
-          showNotice("All LoRaWAN device types are already in this room, or none exists yet.", "error");
+        const profileName = Object.keys(state.config.deviceProfiles).find((name) => !Object.hasOwn(room.devices, name));
+        if (!profileName) {
+          showNotice("All LoRaWAN device profiles are already in this room, or none exists yet.", "error");
           break;
         }
-        room.devices[type] = { deviceNums: [], AVToBindName: downlinkObjectNames(type)[0] || "" };
-        state.expandedRoomDevices[`${state.selectedRoom}::${type}`] = true;
+        room.devices[profileName] = { deviceNums: [], AVToBindName: downlinkObjectNames(profileName)[0] || "" };
+        state.expandedRoomDevices[`${state.selectedRoom}::${profileName}`] = true;
         break;
       }
       case "delete-room-device":
-        delete state.config.roomsSchedules.rooms[state.selectedRoom].devices[actionButton.dataset.deviceType];
-        delete state.expandedRoomDevices[`${state.selectedRoom}::${actionButton.dataset.deviceType}`];
+        delete state.config.roomsSchedules.rooms[state.selectedRoom].devices[actionButton.dataset.deviceProfile];
+        delete state.expandedRoomDevices[`${state.selectedRoom}::${actionButton.dataset.deviceProfile}`];
         break;
       case "add-object": {
         const base = "object";
@@ -1399,20 +1441,20 @@ document.addEventListener("click", async (event) => {
   if (event.target.closest("#export-button")) downloadConfig();
   if (event.target.closest("#import-button")) $("#import-file").click();
   if (event.target.closest("#edit-json-button")) {
-    $("#json-input").value = JSON.stringify(state.config.deviceList, null, 2);
+    $("#json-input").value = JSON.stringify(state.config.deviceProfiles, null, 2);
     $("#json-errors").hidden = true;
     $("#json-dialog").showModal();
   }
   if (event.target.closest("#apply-json-button")) {
     try {
         const imported = JSON.parse($("#json-input").value);
-      if (!imported || typeof imported !== "object" || Array.isArray(imported)) throw new Error("Device list must be a JSON object.");
-        const importedConnections = rebuildConnectionsFromDeviceList(imported);
-        const candidate = { ...state.config, ...importedConnections, deviceList: imported };
+      if (!imported || typeof imported !== "object" || Array.isArray(imported)) throw new Error("Device profiles must be a JSON object.");
+        const importedConnections = rebuildConnectionsFromDeviceProfiles(imported);
+        const candidate = { ...state.config, ...importedConnections, deviceProfiles: imported };
       const response = await fetch("/api/config/validate", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(candidate) });
       const result = await response.json();
       if (!response.ok) throw new Error(result.errors.map((item) => `${item.path}: ${item.message}`).join("\n"));
-      state.config.deviceList = imported;
+      state.config.deviceProfiles = imported;
       state.config.connections = importedConnections.connections;
       state.config.deviceConnections = importedConnections.deviceConnections;
       state.expandedDevices = {};
@@ -1421,7 +1463,7 @@ document.addEventListener("click", async (event) => {
       state.selectedView = "device";
       $("#json-dialog").close();
       render();
-      showNotice("Device list JSON applied.");
+      showNotice("Device profiles JSON applied.");
     } catch (error) {
       $("#json-errors").textContent = error.message;
       $("#json-errors").hidden = false;
@@ -1451,27 +1493,27 @@ $("#import-file").addEventListener("change", async (event) => {
     const imported = {};
     for (const [index, file] of importedFiles.entries()) {
       let kind;
-      if (file.filename === "devicelist.json") kind = "deviceList";
+      if (file.filename === "deviceprofiles.json" || file.filename === "devicelist.json") kind = "deviceProfiles";
       else if (file.filename === "mqtt-connections.json" || file.filename === "mqtt-connection.json") kind = "mqtt";
       else if (file.filename === "rooms-schedules.json") kind = "roomsSchedules";
       else if (file.filename === "bms-connections.json" || file.filename === "connections.json") kind = "bmsConnections";
-      else if (files.length === 1 || file.value?.deviceList) kind = "deviceList";
+      else if (files.length === 1 || file.value?.deviceProfiles) kind = "deviceProfiles";
       else throw new Error(`Unrecognized configuration file: ${files[index].name}`);
       if (Object.hasOwn(imported, kind)) throw new Error(`More than one ${kind} file was selected.`);
       imported[kind] = file.value;
     }
 
     const candidate = structuredClone(state.config);
-    if (imported.deviceList !== undefined) {
-      const importedList = imported.deviceList.deviceList || imported.deviceList;
-      if (!importedList || typeof importedList !== "object" || Array.isArray(importedList)) {
-        throw new Error("Expected a device-list JSON object.");
+    if (imported.deviceProfiles !== undefined) {
+      const importedProfiles = imported.deviceProfiles.deviceProfiles || imported.deviceProfiles.deviceList || imported.deviceProfiles;
+      if (!importedProfiles || typeof importedProfiles !== "object" || Array.isArray(importedProfiles)) {
+        throw new Error("Expected a device profiles JSON object.");
       }
-      if (Object.values(importedList).some((device) => !device || typeof device !== "object" || Array.isArray(device))) {
-        throw new Error("Every device-list entry must be a JSON object.");
+      if (Object.values(importedProfiles).some((device) => !device || typeof device !== "object" || Array.isArray(device))) {
+        throw new Error("Every device-profile entry must be a JSON object.");
       }
-      candidate.deviceList = importedList;
-      const rebuilt = rebuildConnectionsFromDeviceList(importedList);
+      candidate.deviceProfiles = importedProfiles;
+      const rebuilt = rebuildConnectionsFromDeviceProfiles(importedProfiles);
       candidate.connections = rebuilt.connections;
       candidate.deviceConnections = rebuilt.deviceConnections;
     }
@@ -1489,7 +1531,7 @@ $("#import-file").addEventListener("change", async (event) => {
         candidate.deviceConnections = bmsData.deviceConnections;
       }
     }
-    for (const [deviceName, device] of Object.entries(candidate.deviceList)) {
+    for (const [deviceName, device] of Object.entries(candidate.deviceProfiles)) {
       const connectionName = candidate.deviceConnections?.[deviceName] || device.controller?.connectionName || "";
       candidate.deviceConnections[deviceName] = connectionName;
       applyConnection(device, candidate.connections[connectionName], connectionName);
@@ -1533,7 +1575,7 @@ $("#import-file").addEventListener("change", async (event) => {
     }
     state.expandedDevices = {};
     state.expandedObjects = {};
-    state.selectedDevice = Object.keys(candidate.deviceList)[0] || null;
+    state.selectedDevice = Object.keys(candidate.deviceProfiles)[0] || null;
     state.selectedView = "device";
     render();
     showNotice(`${files.length} JSON file${files.length === 1 ? "" : "s"} imported. Save to persist this configuration.`);

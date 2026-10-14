@@ -13,7 +13,7 @@ const NETWORKS = {
   actility: { uplinkSuffix: "/uplink", downlinkSuffix: "/downlink" }
 };
 
-function mapIncomingPacket(topic, rawPayload, deviceList) {
+function mapIncomingPacket(topic, rawPayload, deviceProfiles) {
   let payload;
   try {
     payload = Buffer.isBuffer(rawPayload) ? JSON.parse(rawPayload.toString("utf8")) :
@@ -78,7 +78,7 @@ function mapIncomingPacket(topic, rawPayload, deviceList) {
       details: { errorType: "deviceName", value: deviceName }
     };
   }
-  const deviceType = match[1];
+  const deviceProfile = match[1];
   const deviceNumber = Number.parseInt(match[2], 10);
   if (deviceNumber === 0) {
     return {
@@ -86,14 +86,14 @@ function mapIncomingPacket(topic, rawPayload, deviceList) {
       details: { errorType: "deviceName", value: deviceName }
     };
   }
-  if (!deviceList[deviceType]) {
+  if (!deviceProfiles[deviceProfile]) {
     return {
-      error: `Error: Device Type does not belong to the "LoRaWAN to BACnet" List (${deviceName})`,
+      error: `Error: Device Profile does not belong to the "LoRaWAN to BACnet" List (${deviceName})`,
       details: { errorType: "deviceName", value: deviceName }
     };
   }
 
-  const sourceDevice = deviceList[deviceType];
+  const sourceDevice = deviceProfiles[deviceProfile];
   if (deviceNumber > sourceDevice.identity.maxDevNum) {
     return {
       error: `Error: Device number is too high (${deviceName})`,
@@ -103,14 +103,14 @@ function mapIncomingPacket(topic, rawPayload, deviceList) {
   const configuredNetworkServer = sourceDevice.lorawan?.networkServer;
   if (configuredNetworkServer !== networkServer) {
     return {
-      error: `Error: Network server mismatch (${deviceName}): payload comes from '${networkServer}' but device type '${deviceType}' is configured for '${configuredNetworkServer}'`,
+      error: `Error: Network server mismatch (${deviceName}): payload comes from '${networkServer}' but device profile '${deviceProfile}' is configured for '${configuredNetworkServer}'`,
       details: { errorType: "networkServer", value: networkServer }
     };
   }
 
   const device = JSON.parse(JSON.stringify(sourceDevice));
   device.identity.deviceName = deviceName;
-  device.identity.deviceType = deviceType;
+  device.identity.deviceProfile = deviceProfile;
   device.identity.deviceNum = deviceNumber;
   device.identity.devEUI = deviceEui;
   device.mqtt ||= {};
@@ -154,7 +154,7 @@ function mapIncomingPacket(topic, rawPayload, deviceList) {
   return { device };
 }
 
-function createMqttService({ getDeviceList, onLog = () => {}, clientFactory = mqtt.connect, restApiBacnetHandler = processRestApiBacnet, bacnetHandler = processBacnet } = {}) {
+function createMqttService({ getDeviceProfiles, onLog = () => {}, clientFactory = mqtt.connect, restApiBacnetHandler = processRestApiBacnet, bacnetHandler = processBacnet } = {}) {
   const protocolHandlers = { restAPIBacnet: restApiBacnetHandler, bacnet: bacnetHandler };
   const previousValues = {};
   let client = null;
@@ -270,8 +270,8 @@ function createMqttService({ getDeviceList, onLog = () => {}, clientFactory = mq
         addRawMessage(receivedTopic, payload);
         if (DOWNLINK_TOPIC.test(receivedTopic)) return;
         try {
-          const deviceList = await getDeviceList();
-          const result = mapIncomingPacket(receivedTopic, payload, deviceList);
+          const deviceProfiles = await getDeviceProfiles();
+          const result = mapIncomingPacket(receivedTopic, payload, deviceProfiles);
           if (result.error) addLog("error", result.error, result.details);
           else if (result.device) {
             const debug = result.device.controller?.debug || [];
@@ -284,7 +284,7 @@ function createMqttService({ getDeviceList, onLog = () => {}, clientFactory = mq
             deviceLog("output", `previousValues of ${name} after MQTT reception:\n${JSON.stringify(previousValues[name] ?? null, null, 2)}`, structuredClone(previousValues[name] ?? null), "previousValuesMqtt");
             const protocolHandler = protocolHandlers[result.device.controller?.protocol];
             if (Object.keys(result.device.bacnet.objects).length === 0) {
-              addLog("warning", `${name}: Device type '${result.device.identity.deviceType}' has no association between LoRa payload and BACnet object`);
+              addLog("warning", `${name}: Device profile '${result.device.identity.deviceProfile}' has no association between LoRa payload and BACnet object`);
             } else if (protocolHandler) {
               const outcome = await protocolHandler(result.device, { previousValues, log: deviceLog });
               if (outcome?.ok) await sendDownlink(result.device, deviceLog);
@@ -315,9 +315,9 @@ function createMqttService({ getDeviceList, onLog = () => {}, clientFactory = mq
     return getStatus();
   }
 
-  function clearPreviousValues(deviceType) {
+  function clearPreviousValues(deviceProfile) {
     for (const [deviceName, entry] of Object.entries(previousValues)) {
-      if (entry.identity?.deviceType === deviceType) delete previousValues[deviceName];
+      if (entry.identity?.deviceProfile === deviceProfile) delete previousValues[deviceName];
     }
   }
 

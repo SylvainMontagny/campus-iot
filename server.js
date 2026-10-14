@@ -8,13 +8,14 @@ const { createMqttService } = require("./src/mqtt-service");
 const { createIcalScheduleService } = require("./src/ical-schedule");
 const { createDefaultRoomsSchedules, validateRoomsSchedules, resolveRooms } = require("./src/rooms-config");
 const { testBmsConnection } = require("./src/bms-test");
+const { testIcalUrl } = require("./src/ical-test");
 const { version } = require("./package.json");
 
 const app = express();
 const port = Number(process.env.PORT) || 3000;
 const dataDirectory = path.join(__dirname, "data");
 const mqttService = createMqttService({
-  getDeviceList: async () => (await readConfig()).deviceList
+  getDeviceProfiles: async () => (await readConfig()).deviceProfiles
 });
 const scheduleService = createIcalScheduleService({ log: (level, message) => mqttService.log(level, message) });
 
@@ -22,19 +23,33 @@ app.use(express.json({ limit: "1mb" }));
 app.use(express.static(path.join(__dirname, "public")));
 
 async function readConfig(directory = dataDirectory) {
-  const deviceListPath = path.join(directory, "deviceList.json");
+  const deviceProfilesPath = path.join(directory, "deviceProfiles.json");
   let savedData;
   try {
-    savedData = JSON.parse(await fs.readFile(deviceListPath, "utf8"));
+    savedData = JSON.parse(await fs.readFile(deviceProfilesPath, "utf8"));
   } catch (error) {
     if (error.code !== "ENOENT") throw error;
-    return createDefaultConfig();
+    try {
+      savedData = JSON.parse(await fs.readFile(path.join(directory, "deviceList.json"), "utf8"));
+    } catch (legacyError) {
+      if (legacyError.code === "ENOENT") return createDefaultConfig();
+      throw legacyError;
+    }
   }
 
   const savedBmsConnections = await readBmsConnections(directory);
-  const config = savedData.deviceList
-    ? { ...createDefaultConfig(), ...savedData }
-    : { ...createDefaultConfig(), deviceList: savedData.deviceList || savedData };
+  const config = {
+    ...createDefaultConfig(),
+    ...savedData,
+    deviceProfiles: savedData.deviceProfiles || savedData.deviceList || savedData
+  };
+  delete config.deviceList;
+  for (const device of Object.values(config.deviceProfiles)) {
+    if (device.identity?.deviceProfile === undefined && device.identity?.deviceType !== undefined) {
+      device.identity.deviceProfile = device.identity.deviceType;
+    }
+    if (device.identity) delete device.identity.deviceType;
+  }
   config.connections = {
     ...savedBmsConnections.connections,
     ...(config.connections || {})
@@ -45,7 +60,7 @@ async function readConfig(directory = dataDirectory) {
   };
 
   const namedConnections = new Map();
-  for (const [deviceName, device] of Object.entries(config.deviceList)) {
+  for (const [deviceName, device] of Object.entries(config.deviceProfiles)) {
     const profileName = (device.controller?.connectionName || config.deviceConnections[deviceName] || "").trim();
     if (!profileName) continue;
     const settings = inferConnectionSettings(device);
@@ -58,11 +73,11 @@ async function readConfig(directory = dataDirectory) {
   }
   if (namedConnections.size) {
     config.connections = { ...config.connections, ...Object.fromEntries(namedConnections) };
-    for (const deviceName of Object.keys(config.deviceList)) config.deviceConnections[deviceName] ||= "";
+    for (const deviceName of Object.keys(config.deviceProfiles)) config.deviceConnections[deviceName] ||= "";
   } else {
     const settingsToName = new Map();
     config.deviceConnections = {};
-    for (const [deviceName, device] of Object.entries(config.deviceList)) {
+    for (const [deviceName, device] of Object.entries(config.deviceProfiles)) {
       const settings = inferConnectionSettings(device);
       const settingsKey = JSON.stringify(settings);
       if (!settingsToName.has(settingsKey)) {
@@ -74,7 +89,7 @@ async function readConfig(directory = dataDirectory) {
     }
   }
   config.deviceConnections ||= {};
-  for (const [deviceName, device] of Object.entries(config.deviceList)) {
+  for (const [deviceName, device] of Object.entries(config.deviceProfiles)) {
     device.controller ||= {};
     const connectionName = config.deviceConnections[deviceName] || device.controller.connectionName || "";
     config.deviceConnections[deviceName] = connectionName;
@@ -109,9 +124,9 @@ async function readBmsConnections(directory = dataDirectory) {
 }
 
 async function writeConfig(config, directory = dataDirectory) {
-  const deviceListPath = path.join(directory, "deviceList.json");
+  const deviceProfilesPath = path.join(directory, "deviceProfiles.json");
   await fs.mkdir(directory, { recursive: true });
-  await writeJsonAtomically(deviceListPath, config.deviceList);
+  await writeJsonAtomically(deviceProfilesPath, config.deviceProfiles);
   // Assigned profiles are rebuilt from device settings; this file also retains unused profiles.
   await writeJsonAtomically(path.join(directory, "bms-connections.json"), {
     "bms-connections": config.connections || {},
@@ -147,7 +162,7 @@ function startRoomsSchedules(roomsSchedules, config) {
   return scheduleService.start({
     icalToScheduleConf: roomsSchedules.icalToScheduleConf,
     rooms: roomsSchedules.rooms,
-    deviceList: config.deviceList,
+    deviceProfiles: config.deviceProfiles,
     connections: config.connections
   });
 }
@@ -197,7 +212,15 @@ function inferConnectionSettings(device) {
 function applyConnectionsToDevices(config) {
   if (!config || typeof config !== "object" || Array.isArray(config)) return config;
   const result = structuredClone(config);
-  for (const [deviceName, device] of Object.entries(result.deviceList || {})) {
+  if (result.deviceProfiles === undefined && result.deviceList !== undefined) {
+    result.deviceProfiles = result.deviceList;
+  }
+  delete result.deviceList;
+  for (const [deviceName, device] of Object.entries(result.deviceProfiles || {})) {
+    if (device.identity?.deviceProfile === undefined && device.identity?.deviceType !== undefined) {
+      device.identity.deviceProfile = device.identity.deviceType;
+    }
+    if (device.identity) delete device.identity.deviceType;
     const connectionName = result.deviceConnections?.[deviceName] || device.controller?.connectionName || "";
     result.deviceConnections ||= {};
     result.deviceConnections[deviceName] = connectionName;
@@ -295,6 +318,14 @@ app.post("/api/bms/test", async (request, response) => {
   }
 });
 
+app.post("/api/rooms/test-ical", async (request, response) => {
+  try {
+    response.json({ ok: true, message: await testIcalUrl(request.body?.url) });
+  } catch (error) {
+    response.status(502).json({ ok: false, error: error.message });
+  }
+});
+
 app.get("/api/config", async (_request, response, next) => {
   try {
     response.json({ ...(await readConfig()), roomsSchedules: await readRoomsSchedules() });
@@ -323,12 +354,12 @@ app.put("/api/config", async (request, response, next) => {
       return;
     }
 
-    const previousDeviceList = (await readConfig()).deviceList;
+    const previousDeviceProfiles = (await readConfig()).deviceProfiles;
     await writeConfig(config);
     // previousValues is keyed by device name, so every device of a changed type is cleared.
-    for (const deviceType of new Set([...Object.keys(previousDeviceList), ...Object.keys(config.deviceList)])) {
-      if (!isDeepStrictEqual(previousDeviceList[deviceType], config.deviceList[deviceType])) {
-        mqttService.clearPreviousValues(deviceType);
+    for (const deviceProfile of new Set([...Object.keys(previousDeviceProfiles), ...Object.keys(config.deviceProfiles)])) {
+      if (!isDeepStrictEqual(previousDeviceProfiles[deviceProfile], config.deviceProfiles[deviceProfile])) {
+        mqttService.clearPreviousValues(deviceProfile);
       }
     }
     if (roomsSchedules !== undefined) {
