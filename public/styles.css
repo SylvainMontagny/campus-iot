@@ -227,6 +227,14 @@ button { cursor: pointer; }
 .notice-close:hover { opacity: .65; }
 .notice-error { color: #8d3928; background: #f8e9e3; border-color: #cb6849; }
 .notice-warning { color: #7a5a12; background: #fbf3d9; border-color: #d9a82b; }
+#notice:not([hidden]) + #notice-warning { margin-top: -8px; }
+.warning-sign { flex: 0 0 auto; color: #c58a0a; font-size: 14px; line-height: 1; cursor: help; }
+.zone-toggle { display: inline-flex; align-items: center; flex: 0 0 auto; width: 30px; height: 16px; padding: 2px; border-radius: 999px; box-sizing: border-box; }
+.zone-toggle i { display: grid; place-items: center; width: 12px; height: 12px; border-radius: 50%; background: #fff; font-size: 8px; font-style: normal; font-weight: 700; line-height: 1; }
+.zone-toggle.is-on { justify-content: flex-end; background: #1fd47f; }
+.zone-toggle.is-on i { color: #1fa863; }
+.zone-toggle.is-off { justify-content: flex-start; background: #ff1f55; }
+.zone-toggle.is-off i { color: #ff1f55; }
 .json-dialog { width: min(800px, calc(100vw - 24px)); max-width: none; padding: 0; border: 1px solid #cbd7cd; border-radius: 4px; box-shadow: 0 18px 70px rgb(19 39 30 / 24%); }
 .json-dialog::backdrop { background: rgb(15 29 23 / 56%); }
 .dialog-form { padding: 20px; }

@@ -38,26 +38,56 @@ async function testRestApiBacnet(connection, { client = httpClient, timeout = TE
   return `BMS connected (HTTP ${response.status})`;
 }
 
+// The bitstring bytes of the client hold service n at bit (n % 8), least significant bit first.
+function isServiceSupported(bitstring, service) {
+  const byte = bitstring?.value?.[service >> 3];
+  return byte !== undefined && (byte & (1 << (service & 7))) !== 0;
+}
+
+// Returns a warning when the supported services cannot be read or lack Create/Delete Object; the connection itself is already proven.
+async function checkSupportedServices(client, address, { ObjectType, PropertyIdentifier, ServicesSupported }) {
+  try {
+    const read = await client.readProperty(address, { type: ObjectType.DEVICE, instance: 4194303 }, PropertyIdentifier.PROTOCOL_SERVICES_SUPPORTED);
+    const services = read?.values?.[0]?.value;
+    if (!services?.value) return "";
+    const create = isServiceSupported(services, ServicesSupported.CREATE_OBJECT);
+    const remove = isServiceSupported(services, ServicesSupported.DELETE_OBJECT);
+    if (create && remove) return "";
+    const missing = [!create && "CreateObject", !remove && "DeleteObject"].filter(Boolean).join(" and ");
+    return `BACnet communication will have some limitations (${missing} not supported by the BMS).`;
+  } catch {
+    return "";
+  }
+}
+
 // A BACnet error or abort is still an answer from the device; only silence is a failure.
 async function testBacnet(connection, { createClient, timeout = TEST_TIMEOUT_MS } = {}) {
-  const { ObjectType, PropertyIdentifier } = require("@bacnet-js/client");
+  const bacnetLib = require("@bacnet-js/client");
+  const { ObjectType, PropertyIdentifier } = bacnetLib;
   // The shared client owns UDP 47808: a second client could not receive the BMS replies.
   const client = createClient ? await createClient() : getClient(timeout);
   const ownsClient = Boolean(createClient);
   if (ownsClient) client.on?.("error", () => {});
+  const address = { address: `${connection.ipAddress}:${BACNET_PORT}` };
   let timer;
   try {
     const timeoutPromise = new Promise((_resolve, reject) => {
       timer = setTimeout(() => reject(new Error("ERR_TIMEOUT")), timeout);
     });
-    await Promise.race([
-      client.readProperty({ address: `${connection.ipAddress}:${BACNET_PORT}` }, { type: ObjectType.ANALOG_VALUE, instance: 1 }, PropertyIdentifier.PRESENT_VALUE),
-      timeoutPromise
-    ]);
-    return "BMS connected (BACnet)";
+    let reachable = "BMS connected (BACnet)";
+    try {
+      await Promise.race([
+        client.readProperty(address, { type: ObjectType.ANALOG_VALUE, instance: 1 }, PropertyIdentifier.PRESENT_VALUE),
+        timeoutPromise
+      ]);
+    } catch (error) {
+      const message = error?.message || String(error);
+      if (!/^Bacnet(Error|Abort)/.test(message)) throw error;
+    }
+    const warning = await checkSupportedServices(client, address, bacnetLib);
+    return warning ? { message: reachable, warning } : reachable;
   } catch (error) {
     const message = error?.message || String(error);
-    if (/^Bacnet(Error|Abort)/.test(message)) return `BMS connected  (BACnet)`;
     throw new Error(`Cannot reach the BMS: ${message === "ERR_TIMEOUT" ? "timeout" : message}`);
   } finally {
     clearTimeout(timer);

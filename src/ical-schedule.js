@@ -336,7 +336,7 @@ function createIcalScheduleService({ log = () => {} } = {}) {
 
     const errors = validateZonesSchedules(data, { deviceProfiles, connections });
     if (errors.length) {
-      log("error", `Zones & Schedules not started: ${errors.map((error) => `${error.path}: ${error.message}`).join(" | ")}`);
+      log("error", `Zones & Schedules not started: ${errors.map((error) => (error.standalone ? error.message : `${error.path}: ${error.message}`)).join(" | ")}`);
       return;
     }
     if (!configuredZones.length) return;

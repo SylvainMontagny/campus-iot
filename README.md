@@ -1,4 +1,4 @@
-# LoRaBAC configuration service
+﻿# LoRaBAC configuration service
 
 An Express application that replaces the LoRaBAC Node-RED editor with a browser-based device-profile configuration editor and MQTT uplink listener. It edits global connection settings and Node-RED-compatible device and BACnet object configuration, validates, saves, imports, and exports the JSON, and maps incoming MQTT uplinks into per-device output objects.
 
@@ -23,7 +23,7 @@ Use the **MQTT connection** section in the navigation rail to choose the **LoRaW
 **Zones & Schedules** has two global configurations, stored in `data/zones-schedules.json` as `icalToScheduleConf` and `scheduleEventsConf`. Each zone chooses one with its `configuration` field (default `icalToScheduleConf`):
 
 - **Manage LoRaWAN devices from ical calendar** (`icalToScheduleConf`): the application creates the BACnet schedules and scheduleAV objects of the zones, binds the scheduleAV values to the LoRaWAN devices, then keeps the schedules fed from the iCal calendars.
-- **Add event to BACnet schedule object** (`scheduleEventsConf`): the zone gives the `scheduleID` of an existing BACnet schedule object; the application only updates its events from the iCal calendar (no schedule, scheduleAV, binding or instance-range handling). Zones saved before this option existed use the first configuration.
+- **Add events to an existing BACnet schedule object** (`scheduleEventsConf`): the zone gives the `scheduleID` of an existing BACnet schedule object; the application only updates its events from the iCal calendar (no schedule, scheduleAV, binding or instance-range handling). Zones saved before this option existed use the first configuration.
 
 Every BMS action of Zones & Schedules follows the **BMS protocol** of the zone's BMS connection. With **REST API BACnet** the Distech REST API is used. With **BACnet** the schedules are managed natively with bacnet-js (`src/bacnet-schedule.js`): schedule objects are created and deleted with the BACnet object services (no scheduleAV objects and no scheduleAV update loop, unlike the REST API), events are written to `EXCEPTION_SCHEDULE`, `WEEKLY_SCHEDULE` and `SCHEDULE_DEFAULT`, and each schedule gets a `List_Of_Object_Property_References` pointing to the `AVToBindName` (downlink) objects of the devices of its zone, so the controller applies the schedule output to them.
 

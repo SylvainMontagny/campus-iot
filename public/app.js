@@ -1,4 +1,4 @@
-const state = {
+﻿const state = {
   config: null,
   selectedDevice: null,
   selectedConnection: null,
@@ -23,7 +23,7 @@ const ICAL_CONF = "icalToScheduleConf";
 const EVENTS_CONF = "scheduleEventsConf";
 const SCHEDULE_CONFIGS = [
   [ICAL_CONF, "Manage LoRaWAN devices from ical calendar"],
-  [EVENTS_CONF, "Add event to BACnet schedule object"]
+  [EVENTS_CONF, "Add events to an existing BACnet schedule object"]
 ];
 
 function defaultScheduleDefaults() {
@@ -342,12 +342,20 @@ function renderNavigation() {
   $("#zone-navigation").innerHTML = zones.map((zone, index) => `
     <button class="device-nav-item${state.selectedView === "zone" && index === state.selectedZone ? " is-selected" : ""}" type="button" data-select-zone="${index}">
       <span class="device-nav-copy"><strong>${escapeHtml(zone.scheduleName)}${SCHEDULE_ROWS.flat().every((key) => zone[key] === undefined) ? ' <small class="zone-default-tag">Default config</small>' : ""}</strong><small>Occ: ${escapeHtml(String(zone.valueOccupied ?? state.config.zonesSchedules[confKeyOfZone(zone)].defaults.valueOccupied))} · Unocc: ${escapeHtml(String(zone.valueUnOccupied ?? state.config.zonesSchedules[confKeyOfZone(zone)].defaults.valueUnOccupied))}</small></span>
-      <span class="nav-status-dot ${zone.excluded ? "is-excluded" : "is-included"}" title="${zone.excluded ? "Excluded" : "Included"}" aria-hidden="true"></span>
+      <span class="zone-toggle ${zone.excluded ? "is-off" : "is-on"}" title="${zone.excluded ? "Excluded" : "Included"}" aria-hidden="true"><i>${zone.excluded ? "✕" : "✓"}</i></span>
       <span class="nav-chevron" aria-hidden="true">›</span>
     </button>`).join("");
+  const warningSign = (name) => state.config.connections[name]?.status?.warning
+    ? `<span class="warning-sign" title="${escapeHtml(state.config.connections[name].status.warning)}" aria-label="Warning">⚠</span>` : "";
+  const statusDot = (name) => {
+    const status = state.config.connections[name]?.status?.state;
+    return status
+      ? `<span class="nav-status-dot ${status === "error" ? "is-disconnected" : "is-connected"}" title="${status === "error" ? "Unreachable" : status === "limited" ? "Connected (limited)" : "Connected"}" aria-hidden="true"></span>` : "";
+  };
   $("#connection-navigation").innerHTML = connections.map(([name]) => `
     <button class="device-nav-item connection-nav-item${state.selectedView === "global" && name === state.selectedConnection ? " is-selected" : ""}" type="button" data-select-connection="${escapeHtml(name)}">
       <span class="device-nav-copy"><strong>${escapeHtml(name)}</strong><small>Used by ${Object.values(state.config.deviceConnections).filter((assigned) => assigned === name).length} device profiles</small></span>
+      ${warningSign(name)}${statusDot(name)}
     </button>`).join("");
   $("#device-navigation").innerHTML = entries.map(([name, device]) => `
     <button class="device-nav-item${state.selectedView === "device" && name === state.selectedDevice ? " is-selected" : ""}" type="button" data-select-device="${escapeHtml(name)}">
@@ -364,7 +372,7 @@ function renderCategoryPage() {
       items: Object.entries(state.config.connections).map(([name, connection]) => `
         <button class="category-list-item" type="button" data-select-connection="${escapeHtml(name)}">
           <span class="category-list-copy">
-            <strong>${escapeHtml(name)}</strong>
+            <strong>${escapeHtml(name)}${connection.status?.warning ? ` <span class="warning-sign" title="${escapeHtml(connection.status.warning)}" aria-label="Warning">⚠</span>` : ""}</strong>
             <small>BMS IP address: ${escapeHtml(connection.ipAddress || "Not set")}</small>
             <small>BMS protocol: ${escapeHtml({ bacnet: "BACnet", restAPIBacnet: "REST API BACnet" }[connection.protocol] || connection.protocol || "Not set")}</small>
           </span><span class="nav-chevron" aria-hidden="true">›</span>
@@ -683,7 +691,7 @@ function renderZone() {
       <div class="field-grid">
         <div class="field-row">${zoneField(selectField("Global configuration applied to this zone", "configuration", confKeyOfZone(zone), SCHEDULE_CONFIGS))}</div>
         <div class="${eventsOnly ? "field-pair" : "field-row"}">${zoneField(inputField("Zone / schedule name", "scheduleName", zone.scheduleName))}${eventsOnly ? zoneField(inputField("BACnet schedule ID", "scheduleID", zone.scheduleID ?? "", { type: "number", min: 0, step: 1 })) : ""}</div>
-        <div class="field-row">${zoneField(selectField("On which BMS will be BACnet schedule object?", "connectionName", zone.connectionName || "", connectionOptions))}</div>
+        <div class="field-row">${zoneField(selectField("On which BMS will be the BACnet schedule object?", "connectionName", zone.connectionName || "", connectionOptions))}</div>
         <div class="field-row"><div class="zone-url-test">${zoneField(inputField("iCal URL", "url", zone.url, { placeholder: "https://" }))}<button class="button button-primary" type="button" data-action="test-ical">Test</button></div></div>
       </div>
       ${advancedPanel(`zone:${state.selectedZone}`, `<div class="field-grid">${scheduleSettingRows(SCHEDULE_ROWS, (key) => zone[key] ?? defaults[key], "data-zone-field", false, grouped)}</div>`)}
@@ -779,8 +787,20 @@ function render() {
   [$("#page-title").textContent, $("#page-description").textContent] = pages[view];
 }
 
-function showNotice(message, kind = "success") {
-  const notice = $("#notice");
+function formatIssue(issue) {
+  return issue.standalone ? issue.message : `${issue.path}: ${issue.message}`;
+}
+
+function showNotice(message, kind = "success", { warning = "" } = {}) {
+  fillNotice($("#notice"), message, kind);
+  const extra = $("#notice-warning");
+  if (warning) fillNotice(extra, warning, "warning");
+  else extra.hidden = true;
+  clearTimeout(state.noticeTimer);
+  state.noticeTimer = setTimeout(dismissNotice, 10000);
+}
+
+function fillNotice(notice, message, kind) {
   const text = document.createElement("span");
   text.className = "notice-message";
   text.textContent = message;
@@ -793,14 +813,13 @@ function showNotice(message, kind = "success") {
   notice.replaceChildren(text, closeButton);
   notice.className = `notice notice-${kind}`;
   notice.hidden = false;
-  clearTimeout(state.noticeTimer);
-  state.noticeTimer = setTimeout(dismissNotice, 10000);
 }
 
 function dismissNotice() {
   clearTimeout(state.noticeTimer);
   state.noticeTimer = null;
   $("#notice").hidden = true;
+  $("#notice-warning").hidden = true;
 }
 
 function inputValue(input) {
@@ -1066,7 +1085,7 @@ async function saveConfig() {
   });
   const result = await response.json();
   if (!response.ok) {
-    showNotice(result.errors?.map((error) => `${error.path}: ${error.message}`).join(" | ") || result.error, "error");
+    showNotice(result.errors?.map(formatIssue).join(" | ") || result.error, "error");
     return;
   }
   const mqttSaved = await saveMqttSettings();
@@ -1507,15 +1526,22 @@ document.addEventListener("click", async (event) => {
       case "test-connection": {
         const connection = state.config.connections[state.selectedConnection];
         if (!connection) break;
+        const name = state.selectedConnection;
         showNotice("Testing BMS connection…", "success");
+        const { status: previousStatus, ...connectionSettings } = connection;
         try {
-          const response = await fetch("/api/bms/test", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(connection) });
+          const response = await fetch("/api/bms/test", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(connectionSettings) });
           const result = await response.json();
           if (!response.ok) throw new Error(result.error || "BMS connection test failed.");
-          showNotice(result.message, "success");
+          connection.status = result.warning
+            ? { state: "limited", warning: result.warning, testedAt: new Date().toISOString() }
+            : { state: "ok", testedAt: new Date().toISOString() };
+          showNotice(result.message, "success", { warning: result.warning });
         } catch (error) {
+          connection.status = { state: "error", testedAt: new Date().toISOString() };
           showNotice(error.message, "error");
         }
+        render();
         break;
       }
       case "get-bms-objects": {
@@ -1654,7 +1680,7 @@ document.addEventListener("click", async (event) => {
         const candidate = { ...state.config, ...importedConnections, deviceProfiles: imported };
       const response = await fetch("/api/config/validate", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(candidate) });
       const result = await response.json();
-      if (!response.ok) throw new Error(result.errors.map((item) => `${item.path}: ${item.message}`).join("\n"));
+      if (!response.ok) throw new Error(result.errors.map(formatIssue).join("\n"));
       state.config.deviceProfiles = imported;
       state.config.connections = importedConnections.connections;
       state.config.deviceConnections = importedConnections.deviceConnections;
@@ -1767,7 +1793,7 @@ $("#import-file").addEventListener("change", async (event) => {
     });
     const validationResult = await validation.json();
     if (!validation.ok) {
-      throw new Error(validationResult.errors?.map((item) => `${item.path}: ${item.message}`).join("\n") || "Imported configuration is invalid.");
+      throw new Error(validationResult.errors?.map(formatIssue).join("\n") || "Imported configuration is invalid.");
     }
 
     state.config = candidate;

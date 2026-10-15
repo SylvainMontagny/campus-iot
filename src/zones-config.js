@@ -1,4 +1,4 @@
-const ICAL_TO_SCHEDULE = "icalToScheduleConf";
+﻿const ICAL_TO_SCHEDULE = "icalToScheduleConf";
 const SCHEDULE_EVENTS = "scheduleEventsConf";
 
 function createDefaultZoneSettings() {
@@ -53,8 +53,8 @@ function createDefaultZonesSchedules() {
   };
 }
 
-function issue(message, path) {
-  return { message, path };
+function issue(message, path, { standalone = false } = {}) {
+  return standalone ? { message, path, standalone } : { message, path };
 }
 
 const isNumber = (value) => typeof value === "number" && Number.isFinite(value);
@@ -156,7 +156,7 @@ function validateZonesSchedules(data, { deviceProfiles = {}, connections = {} } 
     names.add(zone.scheduleName);
 
     const connection = connections[zone.connectionName];
-    if (!connection) errors.push(issue("Select an existing BACnet BMS connection", `${zonePath}.connectionName`));
+    if (!connection) errors.push(issue(`BMS connection for zone ${zone.scheduleName || index + 1} doesn't exist`, `${zonePath}.connectionName`, { standalone: true }));
     else if (!["restAPIBacnet", "bacnet"].includes(connection.protocol)) errors.push(issue("Zones & Schedules needs a 'BACnet' or 'REST API BACnet' connection", `${zonePath}.connectionName`));
     else if (!connection.ipAddress) errors.push(issue("The BMS connection has no IP address", `${zonePath}.connectionName`));
 
@@ -166,7 +166,7 @@ function validateZonesSchedules(data, { deviceProfiles = {}, connections = {} } 
     validateZoneSettings(zone, zonePath, errors);
 
     if (isEventsZone(zone)) {
-      if (!eventsConf) errors.push(issue("The 'Add event to BACnet schedule object' configuration is missing", eventsPath));
+      if (!eventsConf) errors.push(issue("The 'Add events to an existing BACnet schedule object' configuration is missing", eventsPath));
       if (!Number.isInteger(zone.scheduleID) || zone.scheduleID < 0) {
         errors.push(issue("BACnet schedule ID must be a non-negative whole number", `${zonePath}.scheduleID`));
       } else {

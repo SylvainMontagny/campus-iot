@@ -24,6 +24,13 @@ test("a complete zone configuration is valid", () => {
   assert.deepEqual(validateZonesSchedules(makeData(), { deviceProfiles, connections }), []);
 });
 
+test("a missing BMS connection names the zone in a standalone message", () => {
+  const errors = validateZonesSchedules(makeData({ connectionName: "missing" }), { deviceProfiles, connections });
+  const [error] = errors.filter((item) => item.path === "zonesSchedules.zones.0.connectionName");
+  assert.equal(error.message, "BMS connection for zone 8D-120 doesn't exist");
+  assert.equal(error.standalone, true);
+});
+
 test("invalid zones are reported with their path", () => {
   const data = makeData({ connectionName: "missing", devices: { valve: { deviceNums: [11], AVToBindName: "temperature" } } });
   const paths = validateZonesSchedules(data, { deviceProfiles, connections }).map((error) => error.path);

@@ -79,6 +79,10 @@ async function readConfig(directory = dataDirectory) {
   }
   if (namedConnections.size) {
     config.connections = { ...config.connections, ...Object.fromEntries(namedConnections) };
+    for (const [profileName, settings] of namedConnections) {
+      const saved = savedBmsConnections.connections?.[profileName]?.status;
+      if (saved && !settings.status) config.connections[profileName] = { ...settings, status: saved };
+    }
     for (const deviceName of Object.keys(config.deviceProfiles)) config.deviceConnections[deviceName] ||= "";
   } else {
     const settingsToName = new Map();
@@ -309,7 +313,8 @@ app.post("/api/mqtt/disconnect", (_request, response) => {
 
 app.post("/api/bms/test", async (request, response) => {
   try {
-    response.json({ ok: true, message: await testBmsConnection(request.body) });
+    const result = await testBmsConnection(request.body);
+    response.json(typeof result === "string" ? { ok: true, message: result } : { ok: true, ...result });
   } catch (error) {
     response.status(502).json({ ok: false, error: error.message });
   }
