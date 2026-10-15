@@ -27,6 +27,8 @@ Use the **MQTT connection** section in the navigation rail to choose the **LoRaW
 
 Every BMS action of Zones & Schedules follows the **BMS protocol** of the zone's BMS connection. With **REST API BACnet** the Distech REST API is used. With **BACnet** the schedules are managed natively with bacnet-js (`src/bacnet-schedule.js`): schedule and scheduleAV objects are created and deleted with the BACnet object services, events are written to `EXCEPTION_SCHEDULE`, `WEEKLY_SCHEDULE` and `SCHEDULE_DEFAULT`, and, as BACnet has no binding service, the scheduleAV value is written directly (priority 14) to the bound device objects.
 
+For LoRaWAN device processing, both **REST API BACnet** and native **BACnet** create configured objects reported as missing by the controller, then initialize them with the current uplink values and the configured (or previously saved) downlink values. Native BACnet recognizes the standard unknown-object error by its BACnet error class/code as well as controller error text. It sends one create request at a time, waits for the controller response before continuing, and does not retry a rejected or timed-out create request.
+
 ## HTTP API
 
 - `GET /api/health` returns service status.
