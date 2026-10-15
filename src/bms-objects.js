@@ -151,8 +151,22 @@ function safeJson(text) {
   try { return JSON.parse(text); } catch { return null; }
 }
 
+// Some firmwares return the list as one string: "[device 1109, analog-value 10, schedule 0]".
+function splitListString(text) {
+  const match = /^\s*\[(.*)\]\s*$/s.exec(text);
+  return match ? match[1].split(",").map((part) => part.trim()).filter(Boolean) : null;
+}
+
 function collectEntries(data) {
-  if (Array.isArray(data)) return data.flatMap((item) => (item && typeof item === "object" && "value" in item && Array.isArray(item.value) ? item.value : [item]));
+  if (Array.isArray(data)) {
+    return data.flatMap((item) => {
+      if (item && typeof item === "object" && "value" in item) {
+        if (Array.isArray(item.value)) return item.value;
+        if (typeof item.value === "string") return splitListString(item.value) ?? [item];
+      }
+      return [item];
+    });
+  }
   if (data && typeof data === "object") {
     for (const key of ["results", "objects", "value", "objectList"]) {
       if (Array.isArray(data[key])) return collectEntries(data[key]);
@@ -196,7 +210,7 @@ async function listRestObjects(connection, options = {}) {
   const timeout = options.timeout ?? TIMEOUT_MS;
   const objects = (await readRestObjectList(connection, { client, timeout }))
     .filter((object) => canonicalType(object.type))
-    .map((object) => blankObject(canonicalType(object.type), object.instance, { restType: object.type }));
+    .map((object) => blankObject(canonicalType(object.type), object.instance, { restType: canonicalType(object.type) }));
   await enrichRestObjects(connection, objects, { client, timeout });
   return splitObjects(objects);
 }

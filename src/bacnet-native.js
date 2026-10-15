@@ -1,5 +1,6 @@
-const { default: Bacnet, ApplicationTag, ErrorClass, ErrorCode, ObjectType, PropertyIdentifier, getEnumName } = require("@bacnet-js/client");
+﻿const { default: Bacnet, ApplicationTag, ErrorClass, ErrorCode, ObjectType, PropertyIdentifier, getEnumName } = require("@bacnet-js/client");
 const { logDeviceObject } = require("./restapi-bacnet");
+const { protocolLabel } = require("./downlink");
 
 const DEFAULT_TIMEOUT_MS = 6000;
 const BACNET_PORT = 47808;
@@ -64,10 +65,10 @@ async function writeUplinkObjects(client, device, log) {
   results.forEach((result, index) => {
     if (result.status === "fulfilled") return;
     ok = false;
-    log("error", `${device.identity.deviceName} (BACnet): Error writing BACnet object ${objects[index].objectName}: ${describeError(result.reason)}`);
+    log("error", `${device.identity.deviceName} (${protocolLabel(device)}): Error writing BACnet object ${objects[index].objectName}: ${describeError(result.reason)}`);
   });
   if (ok) {
-    log("info", `${device.identity.deviceName} (BACnet): Wrote uplink BACNet objects: ${objects.map((object) => object.objectName).join(", ")}`, undefined, "up");
+    log("info", `${device.identity.deviceName} (${protocolLabel(device)}): Wrote uplink BACNet objects: ${objects.map((object) => object.objectName).join(", ")}`, undefined, "up");
   }
   return ok;
 }
@@ -83,7 +84,7 @@ async function readDownlinkObjects(client, device, log) {
   try {
     result = await client.readPropertyMultiple(controllerAddress(device), request);
   } catch (error) {
-    log("error", `${device.identity.deviceName} (BACnet): Error reading BACnet objects: ${describeError(error)}`);
+    log("error", `${device.identity.deviceName} (${protocolLabel(device)}): Error reading BACnet objects: ${describeError(error)}`);
     return false;
   }
 
@@ -94,13 +95,13 @@ async function readDownlinkObjects(client, device, log) {
     if (!object || !first) continue;
     if (first.type === ApplicationTag.ERROR) {
       ok = false;
-      log("error", `${device.identity.deviceName} (BACnet): Error reading BACnet object ${object.objectName}: ${describeBacnetCode(first.value?.errorClass, first.value?.errorCode)}`);
+      log("error", `${device.identity.deviceName} (${protocolLabel(device)}): Error reading BACnet object ${object.objectName}: ${describeBacnetCode(first.value?.errorClass, first.value?.errorCode)}`);
       continue;
     }
     object.value = object.objectType === ObjectType.ANALOG_VALUE ? Number(first.value) : first.value;
   }
   if (ok) {
-    log("info", `${device.identity.deviceName} (BACnet): Read downlink BACNet objects: ${objects.map((object) => object.objectName).join(", ")}`, undefined, "down");
+    log("info", `${device.identity.deviceName} (${protocolLabel(device)}): Read downlink BACNet objects: ${objects.map((object) => object.objectName).join(", ")}`, undefined, "down");
   }
   return ok;
 }
@@ -122,7 +123,7 @@ async function processBacnet(device, { client, timeout = DEFAULT_TIMEOUT_MS, log
   }
 
   if (!hasDownlink) {
-    log("info", `${device.identity.deviceName} (BACnet): TX time = ${Date.now() - device.transmitTime}ms`, undefined, "txTime");
+    log("info", `${device.identity.deviceName} (${protocolLabel(device)}): TX time = ${Date.now() - device.transmitTime}ms`, undefined, "txTime");
   }
   return { handled: true, ok: true };
 }

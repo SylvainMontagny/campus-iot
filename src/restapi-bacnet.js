@@ -1,5 +1,6 @@
-const axios = require("axios");
+﻿const axios = require("axios");
 const https = require("node:https");
+const { protocolLabel } = require("./downlink");
 
 const DEFAULT_TIMEOUT_MS = 5000;
 const DISTECH_BASE = "/api/rest/v2";
@@ -121,21 +122,21 @@ async function runStream(device, dataDirection, ctx) {
   const response = await send(httpClient, request);
 
   if (response.status !== 200) {
-    log("error", `${name} (RestAPI, ${dataDirection}): ${describeFailure(response, request.url)}`);
+    log("error", `${name} (${protocolLabel(device)}, ${dataDirection}): ${describeFailure(response, request.url)}`);
     return false;
   }
 
   if (response.data.includes("Unknown Object")) {
     const allNames = Object.values(device.bacnet.objects).map((object) => object.objectName).join(", ");
-    log("info", `${name} (RestAPI, ${dataDirection}): Creating BACnet objects: ${allNames}`, undefined, "creation");
+    log("info", `${name} (${protocolLabel(device)}, ${dataDirection}): Creating BACnet objects: ${allNames}`, undefined, "creation");
     const created = await send(httpClient, buildCreateRequest(device, timeout));
     if (created.status !== 200) {
-      log("error", `${name} (RestAPI): Object creation failed: ${describeFailure(created, request.url)}`);
+      log("error", `${name} (${protocolLabel(device)}): Object creation failed: ${describeFailure(created, request.url)}`);
       return false;
     }
     const written = await send(httpClient, buildWriteValuesRequest(device, previousValues, timeout));
     if (written.status !== 200) {
-      log("error", `${name} (RestAPI): Writing values after creation failed: ${describeFailure(written, request.url)}`);
+      log("error", `${name} (${protocolLabel(device)}): Writing values after creation failed: ${describeFailure(written, request.url)}`);
       return false;
     }
     return true;
@@ -145,7 +146,7 @@ async function runStream(device, dataDirection, ctx) {
     try {
       storeDownlinkValues(device, response.data);
     } catch (error) {
-      log("error", `${name} (RestAPI): Invalid downlink response: ${error.message}`);
+      log("error", `${name} (${protocolLabel(device)}): Invalid downlink response: ${error.message}`);
       return false;
     }
   }
@@ -153,7 +154,7 @@ async function runStream(device, dataDirection, ctx) {
     .filter((object) => object.dataDirection === dataDirection)
     .map((object) => object.objectName)
     .join(", ");
-  log("info", `${name} (RestAPI): ${dataDirection === "uplink" ? "Wrote uplink BACNet objects" : "Read downlink BACNet objects"}: ${names}`, undefined, dataDirection === "uplink" ? "up" : "down");
+  log("info", `${name} (${protocolLabel(device)}): ${dataDirection === "uplink" ? "Wrote uplink BACNet objects" : "Read downlink BACNet objects"}: ${names}`, undefined, dataDirection === "uplink" ? "up" : "down");
   return true;
 }
 
@@ -187,7 +188,7 @@ async function processRestApiBacnet(device, { httpClient = defaultHttpClient, pr
 
   // With downlink objects, TX time is logged once the downlink has been prepared.
   if (!objects.some((object) => object.dataDirection === "downlink")) {
-    log("info", `${device.identity.deviceName} (RestAPI): TX time = ${Date.now() - device.transmitTime}ms`, undefined, "txTime");
+    log("info", `${device.identity.deviceName} (${protocolLabel(device)}): TX time = ${Date.now() - device.transmitTime}ms`, undefined, "txTime");
   }
   return { handled: true, ok: true };
 }

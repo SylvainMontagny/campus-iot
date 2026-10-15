@@ -348,7 +348,7 @@ function createIcalScheduleService({ log = () => {} } = {}) {
       const key = `${eventsOnly ? "events" : "ical"}|${zone.connectionName}`;
       if (!groups.has(key)) {
         groups.set(key, {
-          name: zone.connectionName, eventsOnly, zones: [],
+          name: `${zone.connectionName} - ${connections[zone.connectionName]?.protocol === "bacnet" ? "BACnet" : "Rest API"}`, eventsOnly, zones: [],
           conf: eventsOnly ? data.scheduleEventsConf : conf,
           driver: createDriver(connections[zone.connectionName])
         });
