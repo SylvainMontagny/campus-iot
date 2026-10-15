@@ -1,5 +1,18 @@
-const { ApplicationTag, ObjectType, PropertyIdentifier } = require("@bacnet-js/client");
-const { getClient, describeError } = require("./bacnet-native");
+const { ApplicationTag, ObjectType, PropertyIdentifier, ASN1_ARRAY_ALL, ASN1_NO_PRIORITY } = require("@bacnet-js/client");
+const asn1 = require("@bacnet-js/client/dist/lib/asn1");
+const { getClient, describeError, isUnknownObject } = require("./bacnet-native");
+
+// The client cannot encode BACnetDeviceObjectPropertyReference values (LIST_OF_OBJECT_PROPERTY_REFERENCES) when writing.
+// Local references (no device) are encoded as: [0] objectId, [1] propertyId.
+if (!asn1.bacappEncodeApplicationData.supportsObjectPropertyReference) {
+  const encodeApplicationData = asn1.bacappEncodeApplicationData;
+  asn1.bacappEncodeApplicationData = (buffer, value) => {
+    if (value?.type !== ApplicationTag.DEVICE_OBJECT_PROPERTY_REFERENCE) return encodeApplicationData(buffer, value);
+    asn1.encodeContextObjectId(buffer, 0, value.value.objectId.type, value.value.objectId.instance);
+    asn1.encodeContextEnumerated(buffer, 1, value.value.propertyId);
+  };
+  asn1.bacappEncodeApplicationData.supportsObjectPropertyReference = true;
+}
 
 const BACNET_PORT = 47808;
 const DAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"];
@@ -45,7 +58,7 @@ const scheduleId = (instance) => ({ type: ObjectType.SCHEDULE, instance });
 const analogValueId = (instance) => ({ type: ObjectType.ANALOG_VALUE, instance });
 
 /** Schedule operations over native BACnet (bacnet-js), mirroring the REST API operations of ical-schedule.js. */
-function createNativeScheduleDriver(connection, { client, log = () => {} } = {}) {
+function createNativeScheduleDriver(connection, { client, log = () => {}, deviceProfiles = {} } = {}) {
   const address = { address: `${connection.ipAddress}:${BACNET_PORT}` };
   const bacnet = () => client ?? getClient();
 
@@ -61,42 +74,70 @@ function createNativeScheduleDriver(connection, { client, log = () => {} } = {})
   // Deleting an object that does not exist is expected on a first start.
   const remove = (objectId) => bacnet().deleteObject(address, objectId).catch(() => {});
 
+  // index/priority are explicit because the client otherwise encodes them as 0, which controllers reject (Class:0 Code:2).
+  const create = (objectId, name) => bacnet().createObject(address, objectId, [
+    { property: { id: PropertyIdentifier.OBJECT_NAME, index: ASN1_ARRAY_ALL }, value: [string(name)], priority: ASN1_NO_PRIORITY }
+  ]);
+
+  // Same defaults as at startup, also used to rebuild a schedule that disappeared from the BMS.
+  async function initializeSchedule(zone, profiles) {
+    const id = scheduleId(zone.scheduleID);
+    await settleAll("Schedule setup", [
+      () => write(id, PropertyIdentifier.SCHEDULE_DEFAULT, [real(19)]),
+      () => write(id, PropertyIdentifier.DESCRIPTION, [string(`Zone ${zone.scheduleName}`)]),
+      ...(Object.keys(zone.devices ?? {}).length ? [() => writeReferences(zone, profiles)] : [])
+    ]);
+  }
+
   async function setupSchedules(zones, conf) {
     const [min, max] = conf.scheduleInstanceRange;
     for (let i = min; i <= max; i++) await remove(scheduleId(i));
-    for (const zone of zones) {
-      await bacnet().createObject(address, scheduleId(zone.scheduleID), [
-        { property: { id: PropertyIdentifier.OBJECT_NAME }, value: [string(zone.scheduleName)] }
-      ]);
-    }
+    for (const zone of zones) await create(scheduleId(zone.scheduleID), zone.scheduleName);
     await settleAll("Schedule setup", zones.flatMap((zone) => [
       () => write(scheduleId(zone.scheduleID), PropertyIdentifier.SCHEDULE_DEFAULT, [real(19)]),
       () => write(scheduleId(zone.scheduleID), PropertyIdentifier.DESCRIPTION, [string(`Zone ${zone.scheduleName}`)])
     ]));
   }
 
-  async function setupScheduleAV(zones, conf) {
-    const [min, max] = conf.scheduleInstanceRange;
-    const offset = conf.scheduleAVInstanceOffset;
-    for (let i = min; i <= max; i++) await remove(analogValueId(i + offset));
-    for (const zone of zones) {
-      await bacnet().createObject(address, analogValueId(zone.scheduleID + offset), [
-        { property: { id: PropertyIdentifier.OBJECT_NAME }, value: [string(`scheduleAV-${zone.scheduleName}`)] }
-      ]);
-    }
-    await settleAll("ScheduleAV setup", zones.map((zone) =>
-      () => write(analogValueId(zone.scheduleID + offset), PropertyIdentifier.PRESENT_VALUE, [real(zone.valueOccupied)])
-    ));
+  // The schedule drives the AVToBindName (downlink) objects of its zone devices through its list of object property references.
+  function writeReferences(zone, profiles) {
+    const references = boundObjects(zone, profiles).map((instance) => ({
+      type: ApplicationTag.DEVICE_OBJECT_PROPERTY_REFERENCE,
+      value: { objectId: analogValueId(instance), propertyId: PropertyIdentifier.PRESENT_VALUE }
+    }));
+    return write(scheduleId(zone.scheduleID), PropertyIdentifier.LIST_OF_OBJECT_PROPERTY_REFERENCES, references);
   }
 
-  // Native BACnet has no binding service: scheduleAV values are written to the device objects by updateScheduleAV.
-  async function setupBindings() {}
+  async function setupBindings(zones, conf, profiles = deviceProfiles) {
+    await settleAll("Schedule references", zones.map((zone) => () => writeReferences(zone, profiles)));
+  }
 
-  async function updateZoneSchedule(zone, special) {
+  // BACnet controllers reject an empty EXCEPTION_SCHEDULE (INVALID_TAG), so "no special event" is one eventless entry on a past date.
+  const EMPTY_EXCEPTION_SCHEDULE = [{
+    date: { type: ApplicationTag.DATE, value: { year: 90, month: 1, day: 1, wday: 1 } },
+    events: [],
+    priority: 16
+  }];
+
+  async function writeZoneSchedule(zone, special) {
     const id = scheduleId(zone.scheduleID);
-    await write(id, PropertyIdentifier.EXCEPTION_SCHEDULE, toExceptionSchedule(special));
+    const exceptions = Object.keys(special ?? {}).length ? toExceptionSchedule(special) : EMPTY_EXCEPTION_SCHEDULE;
+    await write(id, PropertyIdentifier.EXCEPTION_SCHEDULE, exceptions);
     await write(id, PropertyIdentifier.WEEKLY_SCHEDULE, toWeeklySchedule(zone.weekly));
     await write(id, PropertyIdentifier.SCHEDULE_DEFAULT, [real(zone.valueUnOccupied)]);
+  }
+
+  // An unknown object means the schedule is missing on the BMS: it is recreated with the same instance, then written again once.
+  async function updateZoneSchedule(zone, special) {
+    try {
+      await writeZoneSchedule(zone, special);
+    } catch (error) {
+      if (!isUnknownObject(error)) throw error;
+      log("warning", `Schedule ${zone.scheduleID} (${zone.scheduleName}) not found on the BMS, recreating it`);
+      await create(scheduleId(zone.scheduleID), zone.scheduleName);
+      await initializeSchedule(zone, deviceProfiles);
+      await writeZoneSchedule(zone, special);
+    }
   }
 
   function boundObjects(zone, deviceProfiles) {
@@ -111,31 +152,7 @@ function createNativeScheduleDriver(connection, { client, log = () => {} } = {})
     return objects;
   }
 
-  async function updateScheduleAV(zones, conf, label, deviceProfiles = {}) {
-    const offset = conf.scheduleAVInstanceOffset;
-    for (const zone of zones) {
-      let value;
-      try {
-        const read = await bacnet().readProperty(address, scheduleId(zone.scheduleID), PropertyIdentifier.PRESENT_VALUE);
-        value = read?.values?.[0]?.value;
-      } catch (error) {
-        log("warning", `${label}: Schedule ${zone.scheduleID}: ${describeError(error)}`);
-        continue;
-      }
-      const number = Number(value);
-      if (value === null || value === undefined || Number.isNaN(number)) {
-        log("warning", `${label}: Schedule ${zone.scheduleID} returns 0 or NULL`);
-        continue;
-      }
-      await settleAll(`${label}: ScheduleAV ${zone.scheduleName}`, [
-        () => write(analogValueId(offset + zone.scheduleID), PropertyIdentifier.PRESENT_VALUE, [real(number)]),
-        ...boundObjects(zone, deviceProfiles).map((instance) =>
-          () => write(analogValueId(instance), PropertyIdentifier.PRESENT_VALUE, [real(number)], { priority: 14 }))
-      ]);
-    }
-  }
-
-  return { setupSchedules, setupScheduleAV, setupBindings, updateZoneSchedule, updateScheduleAV };
+  return { setupSchedules, setupBindings, updateZoneSchedule };
 }
 
 module.exports = { createNativeScheduleDriver, toWeeklySchedule, toExceptionSchedule };

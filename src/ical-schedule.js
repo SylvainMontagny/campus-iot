@@ -322,9 +322,9 @@ function createIcalScheduleService({ log = () => {} } = {}) {
   }
 
   // The BMS protocol of the connection decides how every BMS action is carried out.
-  function createDriver(connection) {
+  function createDriver(connection, deviceProfiles) {
     return connection.protocol === "bacnet"
-      ? createNativeScheduleDriver(connection, { log })
+      ? createNativeScheduleDriver(connection, { log, deviceProfiles })
       : createRestDriver(createApi(connection));
   }
 
@@ -350,7 +350,7 @@ function createIcalScheduleService({ log = () => {} } = {}) {
         groups.set(key, {
           name: `${zone.connectionName} - ${connections[zone.connectionName]?.protocol === "bacnet" ? "BACnet" : "Rest API"}`, eventsOnly, zones: [],
           conf: eventsOnly ? data.scheduleEventsConf : conf,
-          driver: createDriver(connections[zone.connectionName])
+          driver: createDriver(connections[zone.connectionName], deviceProfiles)
         });
       }
       groups.get(key).zones.push(zone);
@@ -361,9 +361,9 @@ function createIcalScheduleService({ log = () => {} } = {}) {
         if (!active()) return;
         // Zones adding events to existing BACnet schedules need no schedule, scheduleAV or binding setup.
         if (group.eventsOnly) continue;
-        log("info", `${group.name}: creating ${group.zones.length} schedules, scheduleAV and bindings...`);
+        log("info", `${group.name}: creating ${group.zones.length} schedules${group.driver.setupScheduleAV ? ", scheduleAV" : ""} and bindings...`);
         await group.driver.setupSchedules(group.zones, group.conf);
-        await group.driver.setupScheduleAV(group.zones, group.conf);
+        if (group.driver.setupScheduleAV) await group.driver.setupScheduleAV(group.zones, group.conf);
         await group.driver.setupBindings(group.zones, group.conf, deviceProfiles);
       }
     } catch (error) {
@@ -372,9 +372,11 @@ function createIcalScheduleService({ log = () => {} } = {}) {
     }
 
     const updateEvery = (group) => (group.eventsOnly ? data.scheduleEventsConf : conf).timeBetweenScheduleUpdate;
-    if ([...groups.values()].some((group) => !group.eventsOnly)) {
+    if ([...groups.values()].some((group) => !group.eventsOnly && group.driver.updateScheduleAV)) {
       log("info", `Ical events will be updated every ${formatDuration(conf.timeBetweenScheduleUpdate)}`);
       log("info", `ScheduleAV will be updated every ${formatDuration(conf.timeBetweenScheduleAVUpdate)}`);
+    } else if ([...groups.values()].some((group) => !group.eventsOnly)) {
+      log("info", `Ical events will be updated every ${formatDuration(conf.timeBetweenScheduleUpdate)}`);
     }
     if ([...groups.values()].some((group) => group.eventsOnly)) {
       log("info", `Events added to BACnet schedules will be updated every ${formatDuration(data.scheduleEventsConf.timeBetweenScheduleUpdate)}`);
@@ -383,7 +385,7 @@ function createIcalScheduleService({ log = () => {} } = {}) {
     for (const group of groups.values()) {
       const label = group.eventsOnly ? `${group.name} (events)` : group.name;
       loop(`${label} schedule update`, updateEvery(group), active, () => updateAllSchedules(group.driver, group.zones, label, active, group.conf));
-      if (group.eventsOnly) continue;
+      if (group.eventsOnly || !group.driver.updateScheduleAV) continue;
       loop(`${label} scheduleAV update`, conf.timeBetweenScheduleAVUpdate, active, async () => {
         await sleep(1000);
         if (active()) await group.driver.updateScheduleAV(group.zones, conf, label, deviceProfiles);
