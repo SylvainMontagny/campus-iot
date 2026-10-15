@@ -256,7 +256,7 @@ function createIcalScheduleService({ log = () => {} } = {}) {
         await updateZoneSchedule(driver, zone);
       } catch (error) {
         // Skip the zone on iCal/HTTP error.
-        log("error", `Error for zone ${zone.scheduleName}: ${error.message}`);
+        log("error", `${label} Error for zone ${zone.scheduleName}: ${error.message}`);
       }
     }
     if (logEnabled(conf, "eventTimeCreation")) log("info", `${label}: ${zones.length} zones processed in ${(Date.now() - startedAt) / 1000} s`);
@@ -348,7 +348,7 @@ function createIcalScheduleService({ log = () => {} } = {}) {
       const key = `${eventsOnly ? "events" : "ical"}|${zone.connectionName}`;
       if (!groups.has(key)) {
         groups.set(key, {
-          name: `${zone.connectionName} - ${connections[zone.connectionName]?.protocol === "bacnet" ? "BACnet" : "Rest API"}`, eventsOnly, zones: [],
+          name: `(${zone.connectionName} - ${connections[zone.connectionName]?.protocol === "bacnet" ? "BACnet" : "Rest API"})`, eventsOnly, zones: [],
           conf: eventsOnly ? data.scheduleEventsConf : conf,
           driver: createDriver(connections[zone.connectionName], deviceProfiles)
         });
