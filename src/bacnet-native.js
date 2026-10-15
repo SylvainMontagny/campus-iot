@@ -1,10 +1,9 @@
-﻿const { default: Bacnet, ApplicationTag, ErrorClass, ErrorCode, ObjectType, PropertyIdentifier, getEnumName } = require("@bacnet-js/client");
+﻿const { default: Bacnet, ApplicationTag, ErrorClass, ErrorCode, ObjectType, PropertyIdentifier, getEnumName, ASN1_ARRAY_ALL: ARRAY_ALL, ASN1_NO_PRIORITY: NO_PRIORITY } = require("@bacnet-js/client");
 const { logDeviceObject } = require("./restapi-bacnet");
 const { protocolLabel } = require("./downlink");
 
 const DEFAULT_TIMEOUT_MS = 6000;
 const BACNET_PORT = 47808;
-const ARRAY_ALL = 4294967295;
 
 let sharedClient = null;
 
@@ -62,19 +61,6 @@ function isUnknownObject(error) {
   return classMatch?.[1] === "1" && codeMatch?.[1] === "31";
 }
 
-function isConfigurationInProgress(error) {
-  const errorClass = error?.errorClass ?? error?.value?.errorClass;
-  const errorCode = error?.errorCode ?? error?.value?.errorCode;
-  if (errorClass !== undefined || errorCode !== undefined) {
-    return Number(errorClass) === ErrorClass.DEVICE && Number(errorCode) === ErrorCode.CONFIGURATION_IN_PROGRESS;
-  }
-
-  const message = error?.message || String(error);
-  const classMatch = message.match(/\bclass\s*[:=]?\s*(\d+)/i);
-  const codeMatch = message.match(/\bcode\s*[:=]?\s*(\d+)/i);
-  return classMatch?.[1] === "0" && codeMatch?.[1] === "2";
-}
-
 function describeError(error) {
   const message = error?.message || String(error);
   const errorClass = error?.errorClass ?? error?.value?.errorClass;
@@ -85,6 +71,16 @@ function describeError(error) {
   }
   const match = message.match(/Class\s*[:=]?\s*(\d+).*?Code\s*[:=]?\s*(\d+)/i);
   return match ? `${describeBacnetCode(Number(match[1]), Number(match[2]))} (${message})` : message;
+}
+
+// Creates the object with its name and initial value in a single request. The index and priority
+// must be explicit: @bacnet-js/client encodes them as 0 when omitted, which controllers reject.
+function createObject(client, address, object, value) {
+  const property = (id, appData) => ({ property: { id, index: ARRAY_ALL }, value: [appData], priority: NO_PRIORITY });
+  return client.createObject(address, objectId(object), [
+    property(PropertyIdentifier.OBJECT_NAME, { type: ApplicationTag.CHARACTER_STRING, value: object.objectName }),
+    property(PropertyIdentifier.PRESENT_VALUE, toAppData({ ...object, value }))
+  ]);
 }
 
 function downlinkValue(device, object, previousValues) {
@@ -99,35 +95,12 @@ async function createAndWriteObjects(client, device, objects, previousValues, lo
   const names = objects.map((object) => object.objectName).join(", ");
   log("info", `${device.identity.deviceName} (${protocolLabel(device)}): Creating BACnet objects: ${names}`, undefined, "creation");
 
-  // Each request is awaited (ACK) before the next one. Controllers reject initial values in
-  // CreateObject, so the object is created bare, then named, then given its value.
+  // One CreateObject request per object, awaited (ACK) before the next one.
   for (const object of objects) {
     try {
-      await client.createObject(address, objectId(object), []);
-      await client.writeProperty(
-        address,
-        objectId(object),
-        PropertyIdentifier.OBJECT_NAME,
-        [{ type: ApplicationTag.CHARACTER_STRING, value: object.objectName }],
-        {}
-      );
+      await createObject(client, address, object, downlinkValue(device, object, previousValues));
     } catch (error) {
       log("error", `${device.identity.deviceName} (${protocolLabel(device)}): Error creating BACnet object ${object.objectName}: ${describeError(error)}`);
-      return false;
-    }
-  }
-
-  for (const object of objects) {
-    try {
-      await client.writeProperty(
-        address,
-        objectId(object),
-        PropertyIdentifier.PRESENT_VALUE,
-        [toAppData({ ...object, value: downlinkValue(device, object, previousValues) })],
-        {}
-      );
-    } catch (error) {
-      log("error", `${device.identity.deviceName} (${protocolLabel(device)}): Error writing BACnet object ${object.objectName} after creation: ${describeError(error)}`);
       return false;
     }
   }

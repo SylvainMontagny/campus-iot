@@ -1,6 +1,6 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { ApplicationTag, PropertyIdentifier } = require("@bacnet-js/client");
+const { ApplicationTag, PropertyIdentifier, ASN1_ARRAY_ALL, ASN1_NO_PRIORITY } = require("@bacnet-js/client");
 const { processBacnet, isUnknownObject } = require("../src/bacnet-native");
 
 function makeDevice() {
@@ -79,11 +79,18 @@ test("creates a missing uplink object and applies its LoRaWAN value", async () =
   assert.deepEqual(outcome, { handled: true, ok: true });
   assert.equal(creates.length, 1);
   assert.deepEqual(creates[0].id, { type: 2, instance: 5010 });
-  assert.deepEqual(creates[0].properties, []);
-  const created = writes.filter(({ id }) => id.instance === 5010).slice(1);
-  assert.deepEqual(created.map(({ property }) => property), [PropertyIdentifier.OBJECT_NAME, PropertyIdentifier.PRESENT_VALUE]);
-  assert.deepEqual(created[0].values, [{ type: ApplicationTag.CHARACTER_STRING, value: "valve-1-temperature-5010" }]);
-  assert.equal(created[1].values[0].value, 21.5);
+  const [name, value] = creates[0].properties;
+  assert.deepEqual(name, {
+    property: { id: PropertyIdentifier.OBJECT_NAME, index: ASN1_ARRAY_ALL },
+    value: [{ type: ApplicationTag.CHARACTER_STRING, value: "valve-1-temperature-5010" }],
+    priority: ASN1_NO_PRIORITY
+  });
+  assert.deepEqual(value, {
+    property: { id: PropertyIdentifier.PRESENT_VALUE, index: ASN1_ARRAY_ALL },
+    value: [{ type: ApplicationTag.REAL, value: 21.5 }],
+    priority: ASN1_NO_PRIORITY
+  });
+  assert.equal(writes.filter(({ id }) => id.instance === 5010).length, 1);
 });
 
 test("creates a missing downlink object and applies its configured default", async () => {
@@ -104,14 +111,15 @@ test("creates a missing downlink object and applies its configured default", asy
 
   assert.deepEqual(outcome, { handled: true, ok: true });
   assert.deepEqual(creates.map(({ id }) => id), [{ type: 2, instance: 5012 }]);
-  assert.ok(writes.some(({ id, values }) => id.instance === 5012 && values[0].value === 0));
+  assert.equal(creates[0].properties[1].value[0].value, 0);
+  assert.equal(writes.length, 2);
 });
 
 test("uses the previously saved downlink value when provisioning", async () => {
-  const writes = [];
+  const creates = [];
   const client = {
-    writeProperty: async (address, id, property, values) => { writes.push({ id, values }); },
-    createObject: async () => {},
+    writeProperty: async () => {},
+    createObject: async (address, id, properties) => { creates.push({ id, properties }); },
     readPropertyMultiple: async () => {
       throw new Error("Unknown object");
     }
@@ -123,7 +131,8 @@ test("uses the previously saved downlink value when provisioning", async () => {
   const outcome = await processBacnet(makeDevice(), { client, previousValues });
 
   assert.deepEqual(outcome, { handled: true, ok: true });
-  assert.ok(writes.some(({ id, values }) => id.instance === 5012 && values[0].value === 17));
+  assert.equal(creates[0].id.instance, 5012);
+  assert.equal(creates[0].properties[1].value[0].value, 17);
 });
 
 test("recognizes unknown-object errors with controller-specific wording", () => {
@@ -134,7 +143,7 @@ test("recognizes unknown-object errors with controller-specific wording", () => 
   assert.equal(isUnknownObject({ errorClass: 2, errorCode: 31 }), false);
 });
 
-test("sends one create request and does not write if the controller rejects it", async () => {
+test("sends one create request and stops if the controller rejects it", async () => {
   let createCalls = 0;
   const writes = [];
   const client = {
@@ -191,37 +200,6 @@ test("waits for each create acknowledgement before sending the next create reque
 
   assert.deepEqual(outcome, { handled: true, ok: true });
   assert.deepEqual(createdInstances, [5010, 5012]);
-});
-
-test("waits for the create acknowledgement before applying the uplink value", async () => {
-  let acknowledgeCreate;
-  let createStarted;
-  const started = new Promise((resolve) => { createStarted = resolve; });
-  const events = [];
-  const client = {
-    writeProperty: async (address, id, property) => {
-      if (id.instance === 5010) {
-        if (events.includes("created")) events.push(property === PropertyIdentifier.OBJECT_NAME ? "name-written" : "value-written");
-        else throw new Error("BacnetError - Class:1 - Code:31");
-      }
-    },
-    createObject: async () => {
-      events.push("create-request");
-      createStarted();
-      await new Promise((resolve) => { acknowledgeCreate = resolve; });
-      events.push("created");
-    },
-    readPropertyMultiple: async () => ({ values: [] })
-  };
-
-  const operation = processBacnet(makeDevice(), { client });
-  await started;
-  assert.deepEqual(events, ["create-request"]);
-  acknowledgeCreate();
-  const outcome = await operation;
-
-  assert.deepEqual(outcome, { handled: true, ok: true });
-  assert.deepEqual(events, ["create-request", "created", "name-written", "value-written"]);
 });
 
 test("ignores other protocols", async () => {
