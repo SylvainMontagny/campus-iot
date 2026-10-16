@@ -8,7 +8,7 @@ const { createMqttService } = require("./src/mqtt-service");
 const { createIcalScheduleService } = require("./src/ical-schedule");
 const { createDefaultZonesSchedules, createDefaultScheduleEventsConf, validateZonesSchedules, resolveZones, findDuplicateIcalUrls } = require("./src/zones-config");
 const { testBmsConnection } = require("./src/bms-test");
-const { listBmsObjects } = require("./src/bms-objects");
+const { listBmsObjects, deleteBmsObjects } = require("./src/bms-objects");
 const { testIcalUrl } = require("./src/ical-test");
 const { version } = require("./package.json");
 
@@ -323,6 +323,15 @@ app.post("/api/bms/test", async (request, response) => {
 app.post("/api/bms/objects", async (request, response) => {
   try {
     response.json({ ok: true, ...(await listBmsObjects(request.body)) });
+  } catch (error) {
+    response.status(502).json({ ok: false, error: error.message });
+  }
+});
+
+app.post("/api/bms/objects/delete", async (request, response) => {
+  try {
+    const { connection, objects } = request.body ?? {};
+    response.json({ ok: true, ...(await deleteBmsObjects(connection, objects)) });
   } catch (error) {
     response.status(502).json({ ok: false, error: error.message });
   }

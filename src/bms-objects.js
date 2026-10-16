@@ -305,4 +305,46 @@ async function listBmsObjects(connection, options = {}) {
   throw new Error(`Unknown BMS protocol: ${connection.protocol}`);
 }
 
-module.exports = { listBmsObjects };
+const REST_DELETE_SERVICES = { analogValue: "analog-values", binaryValue: "binary-values", schedule: "schedules" };
+
+/** Deletes objects ({type, instance}) on the BMS; returns { deleted, failed: [{type, instance, error}] }. */
+async function deleteBmsObjects(connection, objects, options = {}) {
+  if (!connection?.ipAddress) throw new Error("BMS IP address is required");
+  if (!Array.isArray(objects) || !objects.length) throw new Error("No object to delete");
+  const targets = objects.map((object) => ({ type: canonicalType(object?.type), instance: Number(object?.instance) }));
+  if (targets.some((target) => !target.type || !Number.isInteger(target.instance))) throw new Error("Invalid object to delete");
+  const failed = [];
+  let deleted = 0;
+  const record = (target, error) => failed.push({ ...target, error });
+
+  if (connection.protocol === "restAPIBacnet") {
+    const client = options.rest?.client ?? restRequestFor;
+    for (const target of targets) {
+      try {
+        const response = await client(connection, "DELETE", `/services/bacnet/local/objects/${REST_DELETE_SERVICES[target.type]}/${target.instance}`, undefined, options.rest?.timeout ?? TIMEOUT_MS);
+        if (response.status >= 200 && response.status < 300) deleted += 1;
+        else record(target, restFailure(response));
+      } catch (error) {
+        record(target, `Cannot reach the BMS: ${error.code || error.message}`);
+      }
+    }
+  } else if (connection.protocol === "bacnet") {
+    const bacnet = options.bacnet?.bacnet ?? require("@bacnet-js/client");
+    const client = options.bacnet?.client ?? getClient(options.bacnet?.timeout ?? TIMEOUT_MS);
+    const address = { address: `${connection.ipAddress}:${BACNET_PORT}` };
+    const typeIds = { analogValue: bacnet.ObjectType.ANALOG_VALUE, binaryValue: bacnet.ObjectType.BINARY_VALUE, schedule: bacnet.ObjectType.SCHEDULE };
+    for (const target of targets) {
+      try {
+        await client.deleteObject(address, { type: typeIds[target.type], instance: target.instance });
+        deleted += 1;
+      } catch (error) {
+        record(target, describeError(error));
+      }
+    }
+  } else {
+    throw new Error(`Unknown BMS protocol: ${connection.protocol}`);
+  }
+  return { deleted, failed };
+}
+
+module.exports = { listBmsObjects, deleteBmsObjects };

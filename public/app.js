@@ -306,8 +306,31 @@ function renderGlobal() {
   renderBmsObjects(connectionName);
 }
 
-function table(headers, rows) {
-  return `<div class="bms-objects-table-wrap"><table class="bms-objects-table"><thead><tr>${headers.map((header) => `<th>${header}</th>`).join("")}</tr></thead><tbody>${rows.map((row) => `<tr>${row.map((cell) => `<td>${escapeHtml(String(cell ?? ""))}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`;
+const objectKey = (object) => `${object.type}:${object.instance}`;
+
+function sortedObjects(objects, sort) {
+  if (!sort) return objects;
+  const factor = sort.dir === "desc" ? -1 : 1;
+  return [...objects].sort((a, b) => {
+    const left = a[sort.key] ?? "";
+    const right = b[sort.key] ?? "";
+    const numeric = left !== "" && right !== "" && !Number.isNaN(Number(left)) && !Number.isNaN(Number(right));
+    return factor * (numeric ? Number(left) - Number(right) : String(left).localeCompare(String(right), undefined, { numeric: true, sensitivity: "base" }));
+  });
+}
+
+function table(group, columns, objects, result) {
+  const sort = result.sort?.[group];
+  const selected = result.selected;
+  const rows = sortedObjects(objects, sort);
+  const allChecked = rows.length > 0 && rows.every((object) => selected.has(objectKey(object)));
+  const someChecked = !allChecked && rows.some((object) => selected.has(objectKey(object)));
+  const head = columns.map(([key, label]) => {
+    const arrow = sort?.key === key ? (sort.dir === "desc" ? "▼" : "▲") : "↕";
+    return `<th><button class="bms-sort${sort?.key === key ? " is-active" : ""}" type="button" data-action="sort-bms-objects" data-group="${group}" data-key="${key}" title="Sort by ${label.toLowerCase()}">${label}<span aria-hidden="true">${arrow}</span></button></th>`;
+  }).join("");
+  const body = rows.map((object) => `<tr><td class="bms-check"><input type="checkbox" data-bms-select="${escapeHtml(objectKey(object))}" aria-label="Select ${escapeHtml(object.name || objectKey(object))}"${selected.has(objectKey(object)) ? " checked" : ""}></td>${columns.map(([key]) => `<td>${escapeHtml(String(object[key] ?? ""))}</td>`).join("")}</tr>`).join("");
+  return `<div class="bms-objects-table-wrap"><table class="bms-objects-table"><thead><tr><th class="bms-check"><input type="checkbox" data-bms-select-all="${group}" aria-label="Select all or none"${allChecked ? " checked" : ""}${someChecked ? " data-indeterminate" : ""}></th>${head}</tr></thead><tbody>${body}</tbody></table></div>`;
 }
 
 function renderBmsObjects(connectionName) {
@@ -316,11 +339,15 @@ function renderBmsObjects(connectionName) {
   if (result?.loading) body = `<p class="bms-objects-status">Reading the object list…</p>`;
   else if (result?.error) body = `<p class="bms-objects-status is-error">${escapeHtml(result.error)}</p>`;
   else if (result) {
-    body = `<h3>Analog and binary values</h3>${result.values.length ? table(["Type", "Instance", "Name", "Present value"], result.values.map((object) => [object.type, object.instance, object.name, object.presentValue])) : `<p class="bms-objects-status">No analog or binary values found.</p>`}
-      <h3>Schedules</h3>${result.schedules.length ? table(["Instance", "Name", "Present value", "Exception events"], result.schedules.map((object) => [object.instance, object.name, object.presentValue, object.exceptionSchedule])) : `<p class="bms-objects-status">No schedules found.</p>`}`;
+    result.selected ||= new Set();
+    body = `<h3>Analog and binary values</h3>${result.values.length ? table("values", [["type", "Type"], ["instance", "Instance"], ["name", "Name"], ["presentValue", "Present value"]], result.values, result) : `<p class="bms-objects-status">No analog or binary values found.</p>`}
+      <h3>Schedules</h3>${result.schedules.length ? table("schedules", [["instance", "Instance"], ["name", "Name"], ["presentValue", "Present value"], ["exceptionSchedule", "Exception events"]], result.schedules.map((object) => ({ ...object, type: "schedule" })), result) : `<p class="bms-objects-status">No schedules found.</p>`}`;
   }
+  const count = result?.selected?.size ?? 0;
+  const busy = result?.loading || result?.deleting;
   $("#bms-objects-section").innerHTML = `<div class="section-heading"><div><h2>BMS objects</h2></div></div>
-    <div class="mqtt-actions"><button class="button button-primary" type="button" data-action="get-bms-objects"${result?.loading ? " disabled" : ""}>Get all objects from this BMS</button></div>${body}`;
+    <div class="mqtt-actions"><button class="button button-primary" type="button" data-action="get-bms-objects"${busy ? " disabled" : ""}>Get all objects from this BMS</button>${count ? `<button class="button button-danger" type="button" data-action="delete-bms-objects"${busy ? " disabled" : ""}>Delete ${count} selected object${count > 1 ? "s" : ""}</button>` : ""}</div>${body}`;
+  $("#bms-objects-section").querySelectorAll("[data-indeterminate]").forEach((input) => { input.indeterminate = true; });
 }
 
 function renderNavigation() {
@@ -1310,6 +1337,18 @@ async function refreshMqtt() {
 
 document.addEventListener("change", (event) => {
   const input = event.target;
+  if (input.matches("[data-bms-select], [data-bms-select-all]")) {
+    const result = state.bmsObjects?.[state.selectedConnection];
+    if (!result?.selected) return;
+    if (input.dataset.bmsSelectAll) {
+      const objects = input.dataset.bmsSelectAll === "values" ? result.values : result.schedules.map((object) => ({ ...object, type: "schedule" }));
+      for (const object of objects) input.checked ? result.selected.add(objectKey(object)) : result.selected.delete(objectKey(object));
+    } else {
+      input.checked ? result.selected.add(input.dataset.bmsSelect) : result.selected.delete(input.dataset.bmsSelect);
+    }
+    renderBmsObjects(state.selectedConnection);
+    return;
+  }
   if (input.matches("#global-form [data-connection-field]")) {
     setConnectionValue(input.dataset.connectionField, inputValue(input));
     return;
@@ -1542,6 +1581,45 @@ document.addEventListener("click", async (event) => {
           showNotice(error.message, "error");
         }
         render();
+        break;
+      }
+      case "sort-bms-objects": {
+        const result = state.bmsObjects?.[state.selectedConnection];
+        if (!result) break;
+        const { group, key } = actionButton.dataset;
+        result.sort ||= {};
+        const current = result.sort[group];
+        result.sort[group] = { key, dir: current?.key === key && current.dir === "asc" ? "desc" : "asc" };
+        renderBmsObjects(state.selectedConnection);
+        break;
+      }
+      case "delete-bms-objects": {
+        const connectionName = state.selectedConnection;
+        const connection = state.config.connections[connectionName];
+        const result = state.bmsObjects?.[connectionName];
+        if (!connection || !result?.selected?.size) break;
+        const objects = [...result.selected].map((key) => {
+          const [type, instance] = key.split(":");
+          return { type, instance: Number(instance) };
+        });
+        if (!confirm(`Delete ${objects.length} object${objects.length > 1 ? "s" : ""} on the BMS '${connectionName}'? This cannot be undone.`)) break;
+        result.deleting = true;
+        renderBmsObjects(connectionName);
+        try {
+          const response = await fetch("/api/bms/objects/delete", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ connection, objects }) });
+          const outcome = await response.json();
+          if (!response.ok) throw new Error(outcome.error || "Deleting the objects failed.");
+          const failedKeys = new Set(outcome.failed.map(objectKey));
+          result.values = result.values.filter((object) => failedKeys.has(objectKey(object)) || !result.selected.has(objectKey(object)));
+          result.schedules = result.schedules.filter((object) => failedKeys.has(`schedule:${object.instance}`) || !result.selected.has(`schedule:${object.instance}`));
+          result.selected = new Set(failedKeys);
+          if (outcome.failed.length) showNotice(`Deleted ${outcome.deleted}, failed ${outcome.failed.length}: ${outcome.failed[0].error}`, "error");
+          else showNotice(`Deleted ${outcome.deleted} object${outcome.deleted > 1 ? "s" : ""}.`, "success");
+        } catch (error) {
+          showNotice(error.message, "error");
+        }
+        result.deleting = false;
+        renderBmsObjects(connectionName);
         break;
       }
       case "get-bms-objects": {

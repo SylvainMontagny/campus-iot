@@ -315,3 +315,9 @@ button { cursor: pointer; }
 .bms-objects-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
 .bms-objects-table th, .bms-objects-table td { padding: 6px 10px; text-align: left; vertical-align: top; border-bottom: 1px solid #e8ebee; overflow-wrap: anywhere; white-space: pre-line; }
 .bms-objects-table th { position: sticky; top: 0; background: #f3f5f7; }
+.bms-objects-table .bms-check { width: 28px; text-align: center; }
+.bms-sort { display: inline-flex; align-items: center; gap: 4px; padding: 0; font: inherit; font-weight: 700; color: inherit; background: none; border: 0; cursor: pointer; }
+.bms-sort span { font-size: .75em; opacity: .45; }
+.bms-sort.is-active span, .bms-sort:hover span { opacity: 1; }
+.button-danger { color: #fff; background: #c0392b; border-color: #c0392b; }
+.button-danger:hover:not(:disabled) { background: #a93226; }
