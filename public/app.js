@@ -346,7 +346,7 @@ function renderBmsObjects(connectionName) {
   const count = result?.selected?.size ?? 0;
   const busy = result?.loading || result?.deleting;
   $("#bms-objects-section").innerHTML = `<div class="section-heading"><div><h2>BMS objects</h2></div></div>
-    <div class="mqtt-actions"><button class="button button-primary" type="button" data-action="get-bms-objects"${busy ? " disabled" : ""}>Get all objects from this BMS</button>${count ? `<button class="button button-danger" type="button" data-action="delete-bms-objects"${busy ? " disabled" : ""}>Delete ${count} selected object${count > 1 ? "s" : ""}</button>` : ""}</div>${body}`;
+    <div class="mqtt-actions"><button class="button button-primary" type="button" data-action="get-bms-objects"${busy ? " disabled" : ""}>Get all objects</button>${count ? `<button class="button button-danger" type="button" data-action="delete-bms-objects"${busy ? " disabled" : ""}>Delete ${count} selected object${count > 1 ? "s" : ""}</button>` : ""}</div>${body}`;
   $("#bms-objects-section").querySelectorAll("[data-indeterminate]").forEach((input) => { input.indeterminate = true; });
 }
 
