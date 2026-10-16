@@ -231,6 +231,9 @@ button { cursor: pointer; }
 .warning-sign { flex: 0 0 auto; color: #c58a0a; font-size: 14px; line-height: 1; cursor: help; }
 .zone-toggle { display: inline-flex; align-items: center; flex: 0 0 auto; width: 30px; height: 16px; padding: 2px; border-radius: 999px; box-sizing: border-box; }
 .zone-toggle i { display: grid; place-items: center; width: 12px; height: 12px; border-radius: 50%; background: #fff; font-size: 8px; font-style: normal; font-weight: 700; line-height: 1; }
+.zone-toggle-button { display: inline-flex; align-items: center; justify-content: center; min-height: 30px; padding: 0 6px; background: transparent; border: 0; cursor: pointer; }
+.zone-toggle-button .zone-toggle { width: 44px; height: 24px; padding: 3px; }
+.zone-toggle-button .zone-toggle i { width: 18px; height: 18px; font-size: 12px; }
 .zone-toggle.is-on { justify-content: flex-end; background: #1fd47f; }
 .zone-toggle.is-on i { color: #1fa863; }
 .zone-toggle.is-off { justify-content: flex-start; background: #ff1f55; }

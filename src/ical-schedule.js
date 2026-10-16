@@ -312,12 +312,19 @@ function createIcalScheduleService({ log = () => {} } = {}) {
       setupScheduleAV: (zones, conf) => setupScheduleAV(api, zones, conf),
       setupBindings: (zones, conf, deviceProfiles) => setupBindings(api, zones, conf, deviceProfiles),
       updateScheduleAV: (zones, conf, label) => updateScheduleAV(api, zones, conf, label),
-      updateZoneSchedule: (zone, special) => api.post(`/services/bacnet/local/objects/schedules/${zone.scheduleID}`, {
-        "special-events": special,
-        "weekly-schedule": zone.weekly,
-        "object-name": zone.scheduleName,
-        "schedule-default": zone.valueUnOccupied
-      })
+      updateZoneSchedule: async (zone, special) => {
+        try {
+          await api.post(`/services/bacnet/local/objects/schedules/${zone.scheduleID}`, {
+            "special-events": special,
+            "weekly-schedule": zone.weekly,
+            "object-name": zone.scheduleName,
+            "schedule-default": zone.valueUnOccupied
+          });
+        } catch (error) {
+          if (error.response?.status === 404) throw new Error(`object schedule ${zone.scheduleID} not found on the controller`);
+          throw error;
+        }
+      }
     };
   }
 
