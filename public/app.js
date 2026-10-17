@@ -395,7 +395,6 @@ function renderCategoryPage() {
   const container = $("#category-page");
   const lists = {
     "bms-home": {
-      title: "BMS connections",
       items: Object.entries(state.config.connections).map(([name, connection]) => `
         <button class="category-list-item" type="button" data-select-connection="${escapeHtml(name)}">
           <span class="category-list-copy">
@@ -428,9 +427,19 @@ function renderCategoryPage() {
   if (!page) return;
 
   container.innerHTML = `
-    <div class="section-heading"><div><h2>${page.title}</h2></div></div>
+    ${page.title ? `<div class="section-heading"><div><h2>${page.title}</h2></div></div>` : ""}
     <div class="category-list">${page.items.join("") || `<div class="empty-objects">${page.empty}</div>`}</div>
-    ${page.addAction ? `<button class="add-device-button category-add" type="button" data-action="${page.addAction}"><span aria-hidden="true">+</span> ${page.addLabel}</button>` : ""}`;
+    ${page.addAction ? `<button class="add-device-button category-add" type="button" data-action="${page.addAction}"><span aria-hidden="true">+</span> ${page.addLabel}</button>` : ""}
+    ${state.selectedView === "bms-home" ? `<button class="add-device-button category-add" type="button" data-action="whois-bms"${state.whoIs?.loading ? " disabled" : ""}><span aria-hidden="true">+</span> Add BMS connection using Who-Is</button>${whoIsResults()}` : ""}`;
+}
+
+function whoIsResults() {
+  const result = state.whoIs;
+  if (!result) return "";
+  if (result.loading) return `<p class="bms-objects-status">Sending Who-Is on the local network…</p>`;
+  if (result.error) return `<p class="bms-objects-status is-error">${escapeHtml(result.error)}</p>`;
+  if (!result.devices.length) return `<p class="bms-objects-status">No BACnet device answered the Who-Is.</p>`;
+  return `<h3 class="whois-title">BMS found on the network</h3><div class="bms-objects-table-wrap"><table class="bms-objects-table"><thead><tr><th>Device Name</th><th>IP address</th><th>BACnet ID</th><th></th></tr></thead><tbody>${result.devices.map((device) => `<tr><td>${escapeHtml(device.deviceName)}</td><td>${escapeHtml(device.ipAddress)}</td><td>${device.deviceId}</td><td><button class="add-device-button category-add whois-add" type="button" data-action="add-connection" data-whois-name="${escapeHtml(device.deviceName)}" data-whois-ip="${escapeHtml(device.ipAddress)}"><span aria-hidden="true">+</span> Add this BMS</button></td></tr>`).join("")}</tbody></table></div>`;
 }
 
 function renderDevice() {
@@ -802,7 +811,7 @@ function render() {
   $("#mqtt-section").hidden = view !== "mqtt";
   $("#log-section").hidden = view !== "log";
   const pages = {
-    "bms-home": ["BMS connections", "Manage named connections for your building management systems."],
+    "bms-home": ["BMS connections"],
     "devices-home": ["LoRaWAN to BACnet", "Manage device profiles and their BACnet mappings."],
     global: [state.selectedConnection || "BMS connections"],
     mqtt: ["MQTT connection"],
@@ -1117,7 +1126,23 @@ async function saveConfig() {
   }
   const mqttSaved = await saveMqttSettings();
   showNotice(mqttSaved ? "All configuration saved" : "Device profiles saved, but the MQTT connection could not be saved.", mqttSaved ? undefined : "error");
-  if (result.warnings?.length) showNotice(`${mqttSaved ? "All configuration saved" : "Saved"} with warning:\n${result.warnings.join("\n")}`, "warning");
+  const warnings = [...(result.warnings ?? []), ...findDuplicateConnections()];
+  if (warnings.length) showNotice(`${mqttSaved ? "All configuration saved" : "Saved"} with warning:\n${warnings.join("\n")}`, "warning");
+}
+
+function findDuplicateConnections() {
+  const groups = new Map();
+  for (const [name, connection] of Object.entries(state.config.connections)) {
+    const ip = (connection.ipAddress ?? "").trim();
+    if (!ip) continue;
+    const key = `${ip}|${connection.protocol}`;
+    groups.set(key, [...(groups.get(key) ?? []), name]);
+  }
+  return [...groups.entries()].filter(([, names]) => names.length > 1).map(([key, names]) => {
+    const [ip, protocol] = key.split("|");
+    const label = { bacnet: "BACnet", restAPIBacnet: "REST API BACnet" }[protocol] || protocol;
+    return `BMS connections ${names.map((name) => `'${name}'`).join(", ")} use the same IP address (${ip}) and protocol (${label}).`;
+  });
 }
 
 async function loadVersion() {
@@ -1554,10 +1579,18 @@ document.addEventListener("click", async (event) => {
         }
         break;
       case "add-connection": {
-        let index = 1;
-        while (Object.hasOwn(state.config.connections, `Connection ${index}`)) index += 1;
-        const connectionName = `Connection ${index}`;
-        state.config.connections[connectionName] = defaultConnection();
+        const discovered = actionButton.dataset.whoisIp ? actionButton.dataset : null;
+        let connectionName = discovered?.whoisName?.trim() || "";
+        if (!connectionName) {
+          let index = 1;
+          while (Object.hasOwn(state.config.connections, `Connection ${index}`)) index += 1;
+          connectionName = `Connection ${index}`;
+        } else if (Object.hasOwn(state.config.connections, connectionName)) {
+          let index = 2;
+          while (Object.hasOwn(state.config.connections, `${connectionName} ${index}`)) index += 1;
+          connectionName = `${connectionName} ${index}`;
+        }
+        state.config.connections[connectionName] = { ...defaultConnection(), ...(discovered ? { ipAddress: discovered.whoisIp } : {}) };
         state.selectedConnection = connectionName;
         if (!stayOnCategoryPage) state.selectedView = "global";
         break;
@@ -1620,6 +1653,18 @@ document.addEventListener("click", async (event) => {
         }
         result.deleting = false;
         renderBmsObjects(connectionName);
+        break;
+      }
+      case "whois-bms": {
+        state.whoIs = { loading: true };
+        render();
+        try {
+          const response = await fetch("/api/bms/who-is", { method: "POST" });
+          const result = await response.json();
+          state.whoIs = response.ok ? { devices: result.devices } : { error: result.error || "The Who-Is failed." };
+        } catch (error) {
+          state.whoIs = { error: error.message };
+        }
         break;
       }
       case "get-bms-objects": {
