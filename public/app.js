@@ -239,39 +239,16 @@ function applyConnectionToAssignedDevices(connectionName) {
   }
 }
 
-function connectionFromDevice(device) {
-  const controller = device.controller || {};
-  return {
-    ipAddress: controller.ipAddress || "",
-    protocol: controller.protocol || "bacnet",
-    model: controller.model || "distechControlsV2",
-    bacnetLogin: controller.login || "",
-    bacnetPassword: controller.password || ""
-  };
-}
-
-function rebuildConnectionsFromDeviceProfiles(deviceProfiles) {
-  const connections = {};
+// Device profiles only reference BMS connections by name; they never create them.
+function linkDeviceProfilesToConnections(deviceProfiles) {
   const deviceConnections = {};
-  let unnamedIndex = 1;
-
   for (const [deviceName, device] of Object.entries(deviceProfiles)) {
-    let connectionName = device.controller?.connectionName?.trim();
-    if (!connectionName) {
-      while (Object.hasOwn(connections, `Connection ${unnamedIndex}`)) unnamedIndex += 1;
-      connectionName = `Connection ${unnamedIndex++}`;
-    }
-    const settings = connectionFromDevice(device);
-    if (connections[connectionName] && JSON.stringify(connections[connectionName]) !== JSON.stringify(settings)) {
-      throw new Error(`Devices assigned to connection '${connectionName}' have conflicting settings.`);
-    }
-    connections[connectionName] = settings;
-    deviceConnections[deviceName] = connectionName;
     device.controller ||= {};
+    const connectionName = device.controller.connectionName?.trim() || state.config.deviceConnections[deviceName] || "";
     device.controller.connectionName = connectionName;
+    deviceConnections[deviceName] = connectionName;
   }
-
-  return { connections, deviceConnections };
+  return { connections: state.config.connections, deviceConnections };
 }
 
 function hasDownlink(device) {
@@ -500,7 +477,49 @@ function renderDevice() {
       </div>
     </section>
     <div class="objects-heading"><div><h2>Mapping between LoRaWAN payloads and BACnet objects <span class="object-count">${Object.keys(objects).length}</span></h2></div><button class="button button-outline" type="button" data-action="add-object">+ Add object</button></div>
-    <div class="object-list">${Object.entries(objects).map(([objectName, object]) => renderObject(objectName, object)).join("") || `<div class="empty-objects">No correspondence yet. Add a correspondence between LoRaWAN payload and BACnet object.</div>`}</div>`;
+    <div class="object-list">${Object.entries(objects).map(([objectName, object]) => renderObject(objectName, object)).join("") || `<div class="empty-objects">No correspondence yet. Add a correspondence between LoRaWAN payload and BACnet object.</div>`}</div>
+    <section class="previous-values" id="previous-values">${previousValuesHtml()}</section>`;
+  refreshPreviousValues();
+}
+
+const PREVIOUS_VALUE_COLUMNS = [["type", "Type"], ["instance", "Instance"], ["name", "Name"], ["presentValue", "Present value"], ["controlledBy", "Controlled by"]];
+
+function previousValuesHtml() {
+  const rows = state.previousValues?.[state.selectedDevice] ?? [];
+  const heading = `<h3>Objects on the BMS</h3>`;
+  if (!rows.length) return `${heading}<p class="bms-objects-status">No value stored yet for this device profile.</p>`;
+  const sort = state.previousValuesSort;
+  const text = (row, key) => (key === "controlledBy" ? (row.controlledBy ? `${row.controlledBy.scheduleName} (${row.controlledBy.presentValue})` : "") : row[key]);
+  const sorted = sort ? sortedObjects(rows.map((row) => ({ ...row, controlledBy: text(row, "controlledBy"), _row: row })), sort).map((row) => row._row) : rows;
+  const head = PREVIOUS_VALUE_COLUMNS.map(([key, label]) => {
+    const arrow = sort?.key === key ? (sort.dir === "desc" ? "▼" : "▲") : "↕";
+    return `<th><button class="bms-sort${sort?.key === key ? " is-active" : ""}" type="button" data-action="sort-previous-values" data-key="${key}" title="Sort by ${label.toLowerCase()}">${label}<span aria-hidden="true">${arrow}</span></button></th>`;
+  }).join("");
+  const body = sorted.map((row) => {
+    const rowClass = row.direction === "downlink" ? (row.controlledBy ? "pv-scheduled" : "pv-downlink") : "";
+    return `<tr class="${rowClass}">${PREVIOUS_VALUE_COLUMNS.map(([key]) => `<td>${escapeHtml(String(text(row, key) ?? ""))}</td>`).join("")}</tr>`;
+  }).join("");
+  return `${heading}<div class="bms-objects-table-wrap"><table class="bms-objects-table"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>`;
+}
+
+let previousValuesLoading = false;
+async function refreshPreviousValues() {
+  const profile = state.selectedDevice;
+  if (previousValuesLoading || state.selectedView !== "device" || !profile || !state.config.deviceProfiles[profile]) return;
+  previousValuesLoading = true;
+  try {
+    const response = await fetch(`/api/device-profiles/${encodeURIComponent(profile)}/previous-values`);
+    if (response.ok) {
+      state.previousValues ||= {};
+      state.previousValues[profile] = (await response.json()).rows;
+      const panel = $("#previous-values");
+      if (panel && state.selectedDevice === profile) panel.innerHTML = previousValuesHtml();
+    }
+  } catch {
+    // The table keeps its last content until the next refresh.
+  } finally {
+    previousValuesLoading = false;
+  }
 }
 
 function renderObject(name, object) {
@@ -1658,6 +1677,14 @@ document.addEventListener("click", async (event) => {
         render();
         break;
       }
+      case "sort-previous-values": {
+        const { key } = actionButton.dataset;
+        const current = state.previousValuesSort;
+        state.previousValuesSort = { key, dir: current?.key === key && current.dir === "asc" ? "desc" : "asc" };
+        const panel = $("#previous-values");
+        if (panel) panel.innerHTML = previousValuesHtml();
+        break;
+      }
       case "sort-bms-objects": {
         const result = state.bmsObjects?.[state.selectedConnection];
         if (!result) break;
@@ -1841,13 +1868,12 @@ document.addEventListener("click", async (event) => {
     try {
         const imported = JSON.parse($("#json-input").value);
       if (!imported || typeof imported !== "object" || Array.isArray(imported)) throw new Error("Device profiles must be a JSON object.");
-        const importedConnections = rebuildConnectionsFromDeviceProfiles(imported);
+        const importedConnections = linkDeviceProfilesToConnections(imported);
         const candidate = { ...state.config, ...importedConnections, deviceProfiles: imported };
       const response = await fetch("/api/config/validate", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(candidate) });
       const result = await response.json();
       if (!response.ok) throw new Error(result.errors.map(formatIssue).join("\n"));
       state.config.deviceProfiles = imported;
-      state.config.connections = importedConnections.connections;
       state.config.deviceConnections = importedConnections.deviceConnections;
       inferNetworkFromProfiles(imported);
       syncAssignedConnections();
@@ -1907,9 +1933,7 @@ $("#import-file").addEventListener("change", async (event) => {
         throw new Error("Every device-profile entry must be a JSON object.");
       }
       candidate.deviceProfiles = importedProfiles;
-      const rebuilt = rebuildConnectionsFromDeviceProfiles(importedProfiles);
-      candidate.connections = rebuilt.connections;
-      candidate.deviceConnections = rebuilt.deviceConnections;
+      candidate.deviceConnections = linkDeviceProfilesToConnections(importedProfiles).deviceConnections;
     }
     if (imported.bmsConnections !== undefined) {
       const bmsData = imported.bmsConnections;
@@ -1989,3 +2013,4 @@ clearLog("mqtt-log");
 clearLog("mqtt-raw-log");
 refreshMqtt();
 setInterval(refreshMqtt, 1200);
+setInterval(refreshPreviousValues, 4000);

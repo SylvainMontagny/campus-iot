@@ -189,6 +189,10 @@ function validateZonesSchedules(data, { deviceProfiles = {}, connections = {} } 
         continue;
       }
       const object = definition.bacnet?.objects?.[device?.AVToBindName];
+      const profileConnection = definition.controller?.connectionName || "";
+      if (connections[zone.connectionName] && profileConnection !== zone.connectionName) {
+        errors.push(issue(`Device profile '${profileName}' uses the BMS connection '${profileConnection || "none"}', but this zone's schedule is on '${zone.connectionName}'. Both must be the same BMS connection`, `${zonePath}.connectionName`, { standalone: true }));
+      }
       if (!object) errors.push(issue(`Object '${device?.AVToBindName}' does not exist in '${profileName}'`, `${devicePath}.AVToBindName`));
       else if (object.dataDirection !== "downlink") errors.push(issue(`'${device.AVToBindName}' is not a downlink object`, `${devicePath}.AVToBindName`));
 

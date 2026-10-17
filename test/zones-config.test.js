@@ -6,6 +6,7 @@ const { buildSpecialEvents } = require("../src/ical-schedule");
 const deviceProfiles = {
   valve: {
     identity: { maxDevNum: 10 },
+    controller: { connectionName: "bms" },
     bacnet: { objects: { setpoint: { dataDirection: "downlink" }, temperature: { dataDirection: "uplink" } } }
   }
 };
@@ -19,6 +20,14 @@ function makeData(zone = {}) {
   });
   return data;
 }
+
+test("a zone and its device profiles must use the same BMS connection", () => {
+  const otherConnections = { ...connections, other: { protocol: "bacnet", ipAddress: "10.0.0.2" } };
+  const errors = validateZonesSchedules(makeData({ connectionName: "other" }), { deviceProfiles, connections: otherConnections });
+  assert.equal(errors.length, 1);
+  assert.equal(errors[0].path, "zonesSchedules.zones.0.connectionName");
+  assert.match(errors[0].message, /'valve' uses the BMS connection 'bms', but this zone's schedule is on 'other'/);
+});
 
 test("a complete zone configuration is valid", () => {
   assert.deepEqual(validateZonesSchedules(makeData(), { deviceProfiles, connections }), []);

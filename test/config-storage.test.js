@@ -152,29 +152,8 @@ test("normalizes legacy deviceList and identity.deviceType API fields", () => {
   assert.equal(Object.hasOwn(config, "deviceList"), true);
 });
 
-test("reconstructs separate named profiles from device settings", async (context) => {
-  const directory = await fs.mkdtemp(path.join(os.tmpdir(), "lorabac-device-settings-"));
-  context.after(() => fs.rm(directory, { recursive: true, force: true }));
-  const deviceProfiles = {
-    office: {
-      controller: { ipAddress: "192.168.1.10", protocol: "bacnet" },
-      lorawan: { networkServer: "tts" }
-    },
-    lab: {
-      controller: { ipAddress: "10.0.0.15", protocol: "restAPIBacnet", model: "distechControlsV2", login: "lab", password: "secret" },
-      lorawan: { networkServer: "chirpstack", chirpstack: { grpcApiKey: "api-key", serverAddress: "chirpstack.local", grpcPort: 8080 } }
-    }
-  };
-  await fs.writeFile(path.join(directory, "deviceProfiles.json"), JSON.stringify(deviceProfiles));
-
-  const migrated = await readConfig(directory);
-  assert.equal(Object.keys(migrated.connections).length, 2);
-  assert.notEqual(migrated.deviceConnections.office, migrated.deviceConnections.lab);
-  assert.equal(migrated.connections[migrated.deviceConnections.lab].ipAddress, "10.0.0.15");
-});
-
-test("restores named profiles from controller.connectionName in device-profiles.json", async (context) => {
-  const directory = await fs.mkdtemp(path.join(os.tmpdir(), "lorabac-named-profiles-"));
+test("device profiles never create BMS connections", async (context) => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), "lorabac-no-connection-"));
   context.after(() => fs.rm(directory, { recursive: true, force: true }));
   const deviceProfiles = {
     office: {
@@ -183,17 +162,13 @@ test("restores named profiles from controller.connectionName in device-profiles.
       lorawan: { networkServer: "tts" },
       bacnet: { objects: {} }
     },
-    lab: {
-      identity: { maxDevNum: 2 },
-      controller: { connectionName: "Lab LAN", ipAddress: "10.0.0.15", protocol: "bacnet" },
-      lorawan: { networkServer: "tts" },
-      bacnet: { objects: {} }
-    }
+    lab: { controller: { ipAddress: "10.0.0.15" }, lorawan: { networkServer: "tts" } }
   };
   await fs.writeFile(path.join(directory, "device-profiles.json"), JSON.stringify(deviceProfiles));
+  await fs.writeFile(path.join(directory, "bms-connections.json"), JSON.stringify({ connections: { "Lab LAN": { ipAddress: "10.0.0.15", protocol: "bacnet" } }, deviceConnections: { lab: "Lab LAN" } }));
 
   const restored = await readConfig(directory);
-  assert.deepEqual(Object.keys(restored.connections).sort(), ["Lab LAN", "Office LAN"]);
+  assert.deepEqual(Object.keys(restored.connections), ["Lab LAN"]);
   assert.equal(restored.deviceConnections.office, "Office LAN");
   assert.equal(restored.deviceConnections.lab, "Lab LAN");
 });

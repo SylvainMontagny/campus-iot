@@ -318,6 +318,10 @@ button { cursor: pointer; }
 .bms-objects-table th, .bms-objects-table td { padding: 6px 10px; text-align: left; vertical-align: top; border-bottom: 1px solid #e8ebee; overflow-wrap: anywhere; white-space: pre-line; }
 .bms-objects-table th { position: sticky; top: 0; background: #f3f5f7; }
 .bms-objects-table .bms-check { width: 28px; text-align: center; }
+.previous-values { margin-top: 24px; }
+.previous-values h3 { margin: 0 0 8px; font-size: 1rem; }
+.bms-objects-table tr.pv-downlink td { color: #c0392b; }
+.bms-objects-table tr.pv-scheduled td { color: #1f8a4c; }
 .bms-sort { display: inline-flex; align-items: center; gap: 4px; padding: 0; font: inherit; font-weight: 700; color: inherit; background: none; border: 0; cursor: pointer; }
 .bms-sort span { font-size: .75em; opacity: .45; }
 .bms-sort.is-active span, .bms-sort:hover span { opacity: 1; }

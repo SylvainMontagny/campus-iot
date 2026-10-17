@@ -347,4 +347,38 @@ async function deleteBmsObjects(connection, objects, options = {}) {
   return { deleted, failed };
 }
 
-module.exports = { listBmsObjects, deleteBmsObjects };
+/** Reads the present value of the given schedule instances; returns Map(instance -> text). Unreadable schedules are left out. */
+async function readSchedulePresentValues(connection, instances, options = {}) {
+  const values = new Map();
+  if (!connection?.ipAddress || !instances.length) return values;
+  if (connection.protocol === "restAPIBacnet") {
+    const client = options.rest?.client ?? restRequestFor;
+    const references = instances.map((instance) => ({ type: "schedule", instance, property: "presentValue" }));
+    try {
+      const response = await client(connection, "POST", "/services/bacnet/local/objects/read-property-multiple", { encode: "text", "property-references": references }, options.rest?.timeout ?? TIMEOUT_MS);
+      const data = typeof response.data === "string" ? safeJson(response.data) : response.data;
+      if (response.status === 200) {
+        for (const result of data?.results ?? []) {
+          if (result.property === undefined || result.property === "presentValue") values.set(Number(result.instance), toText(result.value));
+        }
+      }
+    } catch {
+      // The table shows the schedule without its value.
+    }
+  } else if (connection.protocol === "bacnet") {
+    const bacnet = options.bacnet?.bacnet ?? require("@bacnet-js/client");
+    const client = options.bacnet?.client ?? getClient(options.bacnet?.timeout ?? TIMEOUT_MS);
+    const address = { address: `${connection.ipAddress}:${BACNET_PORT}` };
+    await Promise.all(instances.map(async (instance) => {
+      try {
+        const result = await client.readProperty(address, { type: bacnet.ObjectType.SCHEDULE, instance }, bacnet.PropertyIdentifier.PRESENT_VALUE);
+        values.set(instance, toText(result.values));
+      } catch {
+        // The table shows the schedule without its value.
+      }
+    }));
+  }
+  return values;
+}
+
+module.exports = { listBmsObjects, deleteBmsObjects, readSchedulePresentValues };

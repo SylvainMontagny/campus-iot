@@ -10,6 +10,7 @@ const { createDefaultZonesSchedules, createDefaultScheduleEventsConf, validateZo
 const { testBmsConnection } = require("./src/bms-test");
 const { listBmsObjects, deleteBmsObjects } = require("./src/bms-objects");
 const { discoverBmsDevices } = require("./src/bms-discovery");
+const { buildPreviousValuesRows } = require("./src/previous-values");
 const { testIcalUrl } = require("./src/ical-test");
 const { version } = require("./package.json");
 
@@ -66,40 +67,6 @@ async function readConfig(directory = dataDirectory) {
     ...(config.deviceConnections || {})
   };
 
-  const namedConnections = new Map();
-  for (const [deviceName, device] of Object.entries(config.deviceProfiles)) {
-    const profileName = (device.controller?.connectionName || config.deviceConnections[deviceName] || "").trim();
-    if (!profileName) continue;
-    const settings = inferConnectionSettings(device);
-    const priorSettings = namedConnections.get(profileName);
-    if (priorSettings && JSON.stringify(priorSettings) !== JSON.stringify(settings)) {
-      throw new Error(`Device entries assigned to '${profileName}' contain different connection settings`);
-    }
-    namedConnections.set(profileName, settings);
-    config.deviceConnections[deviceName] = profileName;
-  }
-  if (namedConnections.size) {
-    config.connections = { ...config.connections, ...Object.fromEntries(namedConnections) };
-    for (const [profileName, settings] of namedConnections) {
-      const saved = savedBmsConnections.connections?.[profileName]?.status;
-      if (saved && !settings.status) config.connections[profileName] = { ...settings, status: saved };
-    }
-    for (const deviceName of Object.keys(config.deviceProfiles)) config.deviceConnections[deviceName] ||= "";
-  } else {
-    const settingsToName = new Map();
-    config.deviceConnections = {};
-    for (const [deviceName, device] of Object.entries(config.deviceProfiles)) {
-      const settings = inferConnectionSettings(device);
-      const settingsKey = JSON.stringify(settings);
-      if (!settingsToName.has(settingsKey)) {
-        const profileName = `Connection ${settingsToName.size + 1}`;
-        settingsToName.set(settingsKey, profileName);
-        config.connections[profileName] = settings;
-      }
-      config.deviceConnections[deviceName] = settingsToName.get(settingsKey);
-    }
-  }
-  config.deviceConnections ||= {};
   for (const [deviceName, device] of Object.entries(config.deviceProfiles)) {
     device.controller ||= {};
     const connectionName = config.deviceConnections[deviceName] || device.controller.connectionName || "";
@@ -310,6 +277,17 @@ app.post("/api/mqtt/connect", (request, response) => {
 
 app.post("/api/mqtt/disconnect", (_request, response) => {
   response.json(mqttService.disconnect());
+});
+
+app.get("/api/device-profiles/:profile/previous-values", async (request, response, next) => {
+  try {
+    const config = await readConfig();
+    const entries = mqttService.getPreviousValues(request.params.profile);
+    const rows = await buildPreviousValuesRows({ deviceProfile: request.params.profile, entries, zonesSchedules: await readZonesSchedules(), connections: config.connections });
+    response.json({ rows });
+  } catch (error) {
+    next(error);
+  }
 });
 
 app.post("/api/bms/test", async (request, response) => {

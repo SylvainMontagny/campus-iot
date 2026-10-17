@@ -321,7 +321,13 @@ function createMqttService({ getDeviceProfiles, onLog = () => {}, clientFactory 
     }
   }
 
-  return { connect, disconnect, getStatus, getLogs, getRawMessages, publish, clearPreviousValues, log: addLog };
+  function getPreviousValues(deviceProfile) {
+    return Object.values(previousValues)
+      .filter((entry) => entry.identity?.deviceProfile === deviceProfile)
+      .map((entry) => structuredClone(entry));
+  }
+
+  return { connect, disconnect, getStatus, getLogs, getRawMessages, publish, clearPreviousValues, getPreviousValues, log: addLog };
 }
 
 module.exports = { createMqttService, mapIncomingPacket };
