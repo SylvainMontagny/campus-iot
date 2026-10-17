@@ -129,7 +129,7 @@ function validateZonesSchedules(data, { deviceProfiles = {}, connections = {} } 
   const isEventsZone = (zone) => zone?.configuration === SCHEDULE_EVENTS;
   const icalZoneCount = data.zones.filter((zone) => !isEventsZone(zone)).length;
   if (rangeValid && icalZoneCount > max - min + 1) {
-    errors.push(issue("Too many zones, increase the schedule instance range", "In ZONES & SCHEDULES"));
+    errors.push(issue(`Too many zones: ${icalZoneCount} zones use 'Manage LoRaWAN devices from ical calendar' but the schedule instance range ${min} to ${max} only allows ${max - min + 1}. Increase the range or remove zones`, "Schedule instance number range"));
   }
 
   const names = new Set();

@@ -60,7 +60,7 @@ function validateConfig(config) {
 
     for (const field of ["offsetAV", "offsetBV", "instanceRangeAV", "instanceRangeBV"]) {
       if (!Number.isInteger(bacnet[field]) || bacnet[field] < 0) {
-        errors.push(issue(`${field} must be a non-negative whole number`, `${devicePath}.bacnet.${field}`));
+        errors.push(issue("Must be a non-negative whole number", `${devicePath}.bacnet.${field}`));
       }
     }
 

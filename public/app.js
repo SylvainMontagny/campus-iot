@@ -823,8 +823,50 @@ function render() {
   [$("#page-title").textContent, $("#page-description").textContent] = pages[view];
 }
 
+const ISSUE_LABELS = {
+  zone: { scheduleName: "Zone / schedule name", configuration: "Global configuration applied to this zone", scheduleID: "BACnet schedule ID", connectionName: "On which BMS will be the BACnet schedule object", url: "iCal URL", devices: "Devices" },
+  zoneDevice: { profile: "LoRaWAN device profile", deviceNums: "Device numbers (comma separated)", AVToBindName: "AVToBindName (downlink object)" },
+  conf: { timeBetweenScheduleUpdate: "Schedule update interval (seconds)", timeBetweenScheduleAVUpdate: "ScheduleAV update interval (seconds)", scheduleAVInstanceOffset: "First ScheduleAV instance number", scheduleInstanceRange: "Schedule instance number range", logs: "Message logs", defaults: "Default zone settings" },
+  device: { "identity.maxDevNum": "Maximum number of this device", "controller.ipAddress": "BMS IP address", "bacnet.offsetAV": "First AV instance number", "bacnet.instanceRangeAV": "Number of AV for each device", "bacnet.offsetBV": "First BV instance number", "bacnet.instanceRangeBV": "Number of BV for each device", "bacnet.objects": "Assignation mode" },
+  object: { objectType: "BACnet Object type", lorawanPayloadName: "LoRaWAN payload name", dataDirection: "Direction", assignementMode: "Assignation mode", instanceNum: "Instance number", downlinkPort: "Downlink FPort", downlinkStrategy: "Downlink strategy", uplinkToCompareWith: "Uplink BACnet object name", range: "Range minimum and maximum" }
+};
+
+// Turns a validation path such as "zonesSchedules.zones.3.url" into the title of the matching field.
 function formatIssue(issue) {
-  return issue.standalone ? issue.message : `${issue.path}: ${issue.message}`;
+  if (issue.standalone) return issue.message;
+  const parts = String(issue.path ?? "").split(".");
+  const settingLabel = (key, preferGlobal) => {
+    const setting = SCHEDULE_SETTINGS.find((candidate) => candidate.key === key);
+    return setting ? (preferGlobal && setting.globalLabel) || setting.label : null;
+  };
+  let label = null;
+  let context = "";
+  if (parts[0] === "zonesSchedules" && parts[1] === "zones" && parts.length >= 4) {
+    const zone = state.config.zonesSchedules.zones.filter((candidate) => candidate.excluded !== true)[Number(parts[2])];
+    context = zone?.scheduleName ? `zone ${zone.scheduleName}` : "";
+    if (parts[3] === "devices" && parts.length >= 6) {
+      label = ISSUE_LABELS.zoneDevice[parts[5]];
+      context += `${context ? ", " : ""}profile ${parts[4]}`;
+    } else {
+      label = ISSUE_LABELS.zone[parts[3]] ?? settingLabel(parts[3], false);
+    }
+  } else if (parts[0] === "zonesSchedules" && parts.length >= 3) {
+    const title = SCHEDULE_CONFIGS.find(([key]) => key === parts[1])?.[1];
+    label = parts[2] === "defaults" && parts[3] ? settingLabel(parts[3], true) : ISSUE_LABELS.conf[parts[2]];
+    context = title ?? "";
+  } else if (parts[0] === "deviceProfiles" && parts.length >= 2) {
+    context = `profile ${parts[1]}`;
+    if (parts.length === 2) label = "Device profile name";
+    else if (parts[2] === "bacnet" && parts[3] === "objects" && parts.length >= 5) {
+      context += `, object ${parts[4]}`;
+      label = parts.length === 5 ? "BACnet object name" : ISSUE_LABELS.object[parts[5]];
+    } else label = ISSUE_LABELS.device[parts.slice(2).join(".")];
+  } else if (parts[0] === "deviceConnections" && parts[1]) {
+    label = "BMS connection";
+    context = `profile ${parts[1]}`;
+  }
+  if (!label) return issue.path ? `${issue.path}: ${issue.message}` : issue.message;
+  return `${label}${context ? ` (${context})` : ""}: ${issue.message}`;
 }
 
 function showNotice(message, kind = "success", { warning = "" } = {}) {
@@ -1110,7 +1152,7 @@ function findDuplicateInstanceNumbers() {
 async function saveConfig() {
   const conflicts = findDuplicateInstanceNumbers();
   if (conflicts.length) {
-    showNotice(conflicts.join(" | "), "error");
+    showNotice(conflicts.join("\n"), "error");
     return;
   }
   syncAssignedConnections();
@@ -1121,7 +1163,7 @@ async function saveConfig() {
   });
   const result = await response.json();
   if (!response.ok) {
-    showNotice(result.errors?.map(formatIssue).join(" | ") || result.error, "error");
+    showNotice(result.errors?.map(formatIssue).join("\n") || result.error, "error");
     return;
   }
   const mqttSaved = await saveMqttSettings();

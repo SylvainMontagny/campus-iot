@@ -108,6 +108,16 @@ test("a BACnet schedule ID cannot be reused but may fall in the ical range", () 
   assert.deepEqual(paths, ["zonesSchedules.zones.3.scheduleID"]);
 });
 
+test("more ical zones than the schedule instance range allows is an error", () => {
+  const data = makeData();
+  data.icalToScheduleConf.scheduleInstanceRange = [0, 0];
+  const zone = data.zones[0];
+  data.zones.push({ ...structuredClone(zone), scheduleName: "Extra", url: "https://example.org/extra.ics" });
+  const errors = validateZonesSchedules(data, { deviceProfiles, connections }).filter((error) => /Too many zones/.test(error.message));
+  assert.equal(errors.length, 1);
+  assert.match(errors[0].message, /Too many zones: 2 zones .* 0 to 0 only allows 1/);
+});
+
 test("both BACnet and REST API BACnet connections are accepted", () => {
   const data = makeData();
   assert.deepEqual(validateZonesSchedules(data, { deviceProfiles, connections: { bms: { protocol: "bacnet", ipAddress: "10.0.0.1" } } }), []);
