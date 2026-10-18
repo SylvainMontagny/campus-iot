@@ -486,9 +486,9 @@ const PREVIOUS_VALUE_COLUMNS = [["type", "Type"], ["instance", "Instance"], ["na
 
 function previousValuesHtml() {
   const rows = state.previousValues?.[state.selectedDevice] ?? [];
-  const heading = `<h3>Objects on the BMS</h3>`;
+  const heading = `<h3>Objects on the BMS (from previous values)</h3>`;
   if (!rows.length) return `${heading}<p class="bms-objects-status">No value stored yet for this device profile.</p>`;
-  const sort = state.previousValuesSort;
+  const sort = state.previousValuesSort ?? { key: "instance", dir: "asc" };
   const text = (row, key) => (key === "controlledBy" ? (row.controlledBy ? `${row.controlledBy.scheduleName} (${row.controlledBy.presentValue})` : "") : row[key]);
   const sorted = sort ? sortedObjects(rows.map((row) => ({ ...row, controlledBy: text(row, "controlledBy"), _row: row })), sort).map((row) => row._row) : rows;
   const head = PREVIOUS_VALUE_COLUMNS.map(([key, label]) => {
@@ -510,10 +510,20 @@ async function refreshPreviousValues() {
   try {
     const response = await fetch(`/api/device-profiles/${encodeURIComponent(profile)}/previous-values`);
     if (response.ok) {
+      const rows = (await response.json()).rows;
       state.previousValues ||= {};
-      state.previousValues[profile] = (await response.json()).rows;
+      const unchanged = JSON.stringify(state.previousValues[profile]) === JSON.stringify(rows);
+      state.previousValues[profile] = rows;
       const panel = $("#previous-values");
-      if (panel && state.selectedDevice === profile) panel.innerHTML = previousValuesHtml();
+      if (!unchanged && panel && state.selectedDevice === profile) {
+        // Redrawing the table must not move what the user is reading.
+        const scrolled = [];
+        for (let element = panel; element; element = element.parentElement) scrolled.push([element, element.scrollTop, element.scrollLeft]);
+        const { scrollX, scrollY } = window;
+        panel.innerHTML = previousValuesHtml();
+        for (const [element, top, left] of scrolled) { element.scrollTop = top; element.scrollLeft = left; }
+        window.scrollTo(scrollX, scrollY);
+      }
     }
   } catch {
     // The table keeps its last content until the next refresh.
@@ -1679,7 +1689,7 @@ document.addEventListener("click", async (event) => {
       }
       case "sort-previous-values": {
         const { key } = actionButton.dataset;
-        const current = state.previousValuesSort;
+        const current = state.previousValuesSort ?? { key: "instance", dir: "asc" };
         state.previousValuesSort = { key, dir: current?.key === key && current.dir === "asc" ? "desc" : "asc" };
         const panel = $("#previous-values");
         if (panel) panel.innerHTML = previousValuesHtml();
