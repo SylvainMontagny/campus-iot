@@ -904,7 +904,8 @@ function showNotice(message, kind = "success", { warning = "" } = {}) {
   if (warning) fillNotice(extra, warning, "warning");
   else extra.hidden = true;
   clearTimeout(state.noticeTimer);
-  state.noticeTimer = setTimeout(dismissNotice, 10000);
+  // Errors stay until the user closes them.
+  state.noticeTimer = kind === "error" ? null : setTimeout(dismissNotice, 10000);
 }
 
 function fillNotice(notice, message, kind) {
