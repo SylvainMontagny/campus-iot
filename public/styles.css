@@ -317,6 +317,7 @@ button { cursor: pointer; }
 .bms-objects-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
 .bms-objects-table th, .bms-objects-table td { padding: 6px 10px; text-align: left; vertical-align: top; border-bottom: 1px solid #e8ebee; overflow-wrap: anywhere; white-space: pre-line; }
 .bms-objects-table th { position: sticky; top: 0; background: #f3f5f7; }
+.bms-objects-table th.bms-center, .bms-objects-table td.bms-center { text-align: center; }
 .bms-objects-table .bms-check { width: 28px; text-align: center; }
 .previous-values { margin-top: 24px; }
 .previous-values h3 { margin: 0 0 8px; font-size: 1rem; }

@@ -10,7 +10,7 @@ const { createDefaultZonesSchedules, createDefaultScheduleEventsConf, validateZo
 const { testBmsConnection } = require("./src/bms-test");
 const { listBmsObjects, deleteBmsObjects } = require("./src/bms-objects");
 const { discoverBmsDevices } = require("./src/bms-discovery");
-const { buildPreviousValuesRows } = require("./src/previous-values");
+const { buildBmsObjectRows } = require("./src/profile-bms-objects");
 const { testIcalUrl } = require("./src/ical-test");
 const { version } = require("./package.json");
 
@@ -279,14 +279,19 @@ app.post("/api/mqtt/disconnect", (_request, response) => {
   response.json(mqttService.disconnect());
 });
 
-app.get("/api/device-profiles/:profile/previous-values", async (request, response, next) => {
+app.post("/api/device-profiles/:profile/bms-objects", async (request, response) => {
   try {
     const config = await readConfig();
-    const entries = mqttService.getPreviousValues(request.params.profile);
-    const rows = await buildPreviousValuesRows({ deviceProfile: request.params.profile, entries, zonesSchedules: await readZonesSchedules(), connections: config.connections });
-    response.json({ rows });
+    const definition = config.deviceProfiles[request.params.profile];
+    if (!definition) return response.status(404).json({ ok: false, error: "Unknown device profile" });
+    const connectionName = config.deviceConnections[request.params.profile];
+    const connection = config.connections[connectionName];
+    if (!connection) return response.status(400).json({ ok: false, error: "This device profile has no BMS connection" });
+    const bmsObjects = await listBmsObjects(connection);
+    const rows = buildBmsObjectRows({ deviceProfile: request.params.profile, definition, connectionName, bmsObjects, zonesSchedules: await readZonesSchedules() });
+    response.json({ ok: true, rows });
   } catch (error) {
-    next(error);
+    response.status(502).json({ ok: false, error: error.message });
   }
 });
 

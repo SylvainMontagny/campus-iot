@@ -304,10 +304,10 @@ function table(group, columns, objects, result) {
   const someChecked = !allChecked && rows.some((object) => selected.has(objectKey(object)));
   const head = columns.map(([key, label]) => {
     const arrow = sort?.key === key ? (sort.dir === "desc" ? "▼" : "▲") : "↕";
-    return `<th><button class="bms-sort${sort?.key === key ? " is-active" : ""}" type="button" data-action="sort-bms-objects" data-group="${group}" data-key="${key}" title="Sort by ${label.toLowerCase()}">${label}<span aria-hidden="true">${arrow}</span></button></th>`;
+    return `<th${CENTERED_COLUMNS.has(key) ? ` class="bms-center"` : ""}><button class="bms-sort${sort?.key === key ? " is-active" : ""}" type="button" data-action="sort-bms-objects" data-group="${group}" data-key="${key}" title="Sort by ${label.toLowerCase()}">${label}<span aria-hidden="true">${arrow}</span></button></th>`;
   }).join("");
-  const body = rows.map((object) => `<tr><td class="bms-check"><input type="checkbox" data-bms-select="${escapeHtml(objectKey(object))}" aria-label="Select ${escapeHtml(object.name || objectKey(object))}"${selected.has(objectKey(object)) ? " checked" : ""}></td>${columns.map(([key]) => `<td>${escapeHtml(String(object[key] ?? ""))}</td>`).join("")}</tr>`).join("");
-  return `<div class="bms-objects-table-wrap"><table class="bms-objects-table"><thead><tr><th class="bms-check"><input type="checkbox" data-bms-select-all="${group}" aria-label="Select all or none"${allChecked ? " checked" : ""}${someChecked ? " data-indeterminate" : ""}></th>${head}</tr></thead><tbody>${body}</tbody></table></div>`;
+  const body = rows.map((object) => `<tr><td class="bms-check"><input type="checkbox" data-bms-select="${escapeHtml(objectKey(object))}" aria-label="Select ${escapeHtml(object.name || objectKey(object))}"${selected.has(objectKey(object)) ? " checked" : ""}></td>${columns.map(([key]) => `<td${CENTERED_COLUMNS.has(key) ? ` class="bms-center"` : ""}>${escapeHtml(String(object[key] ?? ""))}</td>`).join("")}</tr>`).join("");
+  return `<div class="bms-objects-table-wrap" data-scroll-key="bms:${escapeHtml(state.selectedConnection)}:${group}"><table class="bms-objects-table"><thead><tr><th class="bms-check"><input type="checkbox" data-bms-select-all="${group}" aria-label="Select all or none"${allChecked ? " checked" : ""}${someChecked ? " data-indeterminate" : ""}></th>${head}</tr></thead><tbody>${body}</tbody></table></div>`;
 }
 
 function renderBmsObjects(connectionName) {
@@ -325,6 +325,7 @@ function renderBmsObjects(connectionName) {
   $("#bms-objects-section").innerHTML = `<div class="section-heading"><div><h2>BMS objects</h2></div></div>
     <div class="mqtt-actions"><button class="button button-primary" type="button" data-action="get-bms-objects"${busy ? " disabled" : ""}>Get all objects</button>${count ? `<button class="button button-danger" type="button" data-action="delete-bms-objects"${busy ? " disabled" : ""}>Delete ${count} selected object${count > 1 ? "s" : ""}</button>` : ""}</div>${body}`;
   $("#bms-objects-section").querySelectorAll("[data-indeterminate]").forEach((input) => { input.indeterminate = true; });
+  restoreTableScroll($("#bms-objects-section"));
 }
 
 function renderNavigation() {
@@ -479,60 +480,73 @@ function renderDevice() {
     <div class="objects-heading"><div><h2>Mapping between LoRaWAN payloads and BACnet objects <span class="object-count">${Object.keys(objects).length}</span></h2></div><button class="button button-outline" type="button" data-action="add-object">+ Add object</button></div>
     <div class="object-list">${Object.entries(objects).map(([objectName, object]) => renderObject(objectName, object)).join("") || `<div class="empty-objects">No correspondence yet. Add a correspondence between LoRaWAN payload and BACnet object.</div>`}</div>
     <section class="previous-values" id="previous-values">${previousValuesHtml()}</section>`;
-  refreshPreviousValues();
+  restoreTableScroll($("#previous-values"));
+}
+
+// Scroll position of each BMS table, kept across redraws (keyed by data-scroll-key).
+const tableScroll = {};
+document.addEventListener("scroll", (event) => {
+  const key = event.target?.dataset?.scrollKey;
+  if (key) tableScroll[key] = { top: event.target.scrollTop, left: event.target.scrollLeft };
+}, true);
+
+function restoreTableScroll(root) {
+  root?.querySelectorAll("[data-scroll-key]").forEach((element) => {
+    const position = tableScroll[element.dataset.scrollKey];
+    if (position) { element.scrollTop = position.top; element.scrollLeft = position.left; }
+  });
 }
 
 const PREVIOUS_VALUE_COLUMNS = [["type", "Type"], ["instance", "Instance"], ["name", "Name"], ["presentValue", "Present value"], ["controlledBy", "Controlled by"]];
+const CENTERED_COLUMNS = new Set(["instance", "presentValue"]);
 
 function previousValuesHtml() {
-  const rows = state.previousValues?.[state.selectedDevice] ?? [];
-  const heading = `<h3>Objects on the BMS (from previous values)</h3>`;
-  if (!rows.length) return `${heading}<p class="bms-objects-status">No value stored yet for this device profile.</p>`;
+  const result = state.previousValues?.[state.selectedDevice];
+  const rows = result?.rows ?? [];
+  const busy = Boolean(result?.loading);
+  const heading = `<h3>Objects on the BMS</h3><div class="mqtt-actions"><button class="button button-primary" type="button" data-action="get-profile-bms-objects"${busy ? " disabled" : ""}>Get BMS objects</button></div>`;
+  if (busy) return `${heading}<p class="bms-objects-status">Reading the object list…</p>`;
+  if (result?.error) return `${heading}<p class="bms-objects-status is-error">${escapeHtml(result.error)}</p>`;
+  if (!result) return `${heading}<p class="bms-objects-status">Press "Get BMS objects" to read the objects of this device profile on the BMS.</p>`;
+  if (!rows.length) return `${heading}<p class="bms-objects-status">No object of this device profile found on the BMS.</p>`;
   const sort = state.previousValuesSort ?? { key: "instance", dir: "asc" };
   const text = (row, key) => (key === "controlledBy" ? (row.controlledBy ? `${row.controlledBy.scheduleName} (${row.controlledBy.presentValue})` : "") : row[key]);
   const sorted = sort ? sortedObjects(rows.map((row) => ({ ...row, controlledBy: text(row, "controlledBy"), _row: row })), sort).map((row) => row._row) : rows;
   const head = PREVIOUS_VALUE_COLUMNS.map(([key, label]) => {
     const arrow = sort?.key === key ? (sort.dir === "desc" ? "▼" : "▲") : "↕";
-    return `<th><button class="bms-sort${sort?.key === key ? " is-active" : ""}" type="button" data-action="sort-previous-values" data-key="${key}" title="Sort by ${label.toLowerCase()}">${label}<span aria-hidden="true">${arrow}</span></button></th>`;
+    return `<th${CENTERED_COLUMNS.has(key) ? ` class="bms-center"` : ""}><button class="bms-sort${sort?.key === key ? " is-active" : ""}" type="button" data-action="sort-previous-values" data-key="${key}" title="Sort by ${label.toLowerCase()}">${label}<span aria-hidden="true">${arrow}</span></button></th>`;
   }).join("");
+  const sameValue = (a, b) => (a !== "" && b !== "" && !Number.isNaN(Number(a)) && !Number.isNaN(Number(b)) ? Number(a) === Number(b) : String(a) === String(b));
   const body = sorted.map((row) => {
-    const sameValue = (a, b) => (a !== "" && b !== "" && !Number.isNaN(Number(a)) && !Number.isNaN(Number(b)) ? Number(a) === Number(b) : String(a) === String(b));
     const rowClass = row.direction !== "downlink" ? ""
       : !row.controlledBy ? "pv-downlink"
         : sameValue(row.controlledBy.presentValue, row.presentValue) ? "pv-scheduled" : "pv-mismatch";
-    return `<tr class="${rowClass}">${PREVIOUS_VALUE_COLUMNS.map(([key]) => `<td>${escapeHtml(String(text(row, key) ?? ""))}</td>`).join("")}</tr>`;
+    return `<tr class="${rowClass}">${PREVIOUS_VALUE_COLUMNS.map(([key]) => `<td${CENTERED_COLUMNS.has(key) ? ` class="bms-center"` : ""}>${escapeHtml(String(text(row, key) ?? ""))}</td>`).join("")}</tr>`;
   }).join("");
-  return `${heading}<div class="bms-objects-table-wrap"><table class="bms-objects-table"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>`;
+  return `${heading}<div class="bms-objects-table-wrap" data-scroll-key="pv:${escapeHtml(state.selectedDevice)}"><table class="bms-objects-table"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>`;
 }
 
-let previousValuesLoading = false;
-async function refreshPreviousValues() {
+function renderPreviousValues() {
+  const panel = $("#previous-values");
+  if (!panel) return;
+  panel.innerHTML = previousValuesHtml();
+  restoreTableScroll(panel);
+}
+
+async function getProfileBmsObjects() {
   const profile = state.selectedDevice;
-  if (previousValuesLoading || state.selectedView !== "device" || !profile || !state.config.deviceProfiles[profile]) return;
-  previousValuesLoading = true;
+  if (!profile || !state.config.deviceProfiles[profile]) return;
+  state.previousValues ||= {};
+  state.previousValues[profile] = { loading: true };
+  renderPreviousValues();
   try {
-    const response = await fetch(`/api/device-profiles/${encodeURIComponent(profile)}/previous-values`);
-    if (response.ok) {
-      const rows = (await response.json()).rows;
-      state.previousValues ||= {};
-      const unchanged = JSON.stringify(state.previousValues[profile]) === JSON.stringify(rows);
-      state.previousValues[profile] = rows;
-      const panel = $("#previous-values");
-      if (!unchanged && panel && state.selectedDevice === profile) {
-        // Redrawing the table must not move what the user is reading.
-        const scrolled = [];
-        for (let element = panel; element; element = element.parentElement) scrolled.push([element, element.scrollTop, element.scrollLeft]);
-        const { scrollX, scrollY } = window;
-        panel.innerHTML = previousValuesHtml();
-        for (const [element, top, left] of scrolled) { element.scrollTop = top; element.scrollLeft = left; }
-        window.scrollTo(scrollX, scrollY);
-      }
-    }
-  } catch {
-    // The table keeps its last content until the next refresh.
-  } finally {
-    previousValuesLoading = false;
+    const response = await fetch(`/api/device-profiles/${encodeURIComponent(profile)}/bms-objects`, { method: "POST" });
+    const result = await response.json();
+    state.previousValues[profile] = response.ok ? { rows: result.rows } : { error: result.error || "Reading the object list failed." };
+  } catch (error) {
+    state.previousValues[profile] = { error: error.message };
   }
+  if (state.selectedDevice === profile) renderPreviousValues();
 }
 
 function renderObject(name, object) {
@@ -1695,8 +1709,11 @@ document.addEventListener("click", async (event) => {
         const { key } = actionButton.dataset;
         const current = state.previousValuesSort ?? { key: "instance", dir: "asc" };
         state.previousValuesSort = { key, dir: current?.key === key && current.dir === "asc" ? "desc" : "asc" };
-        const panel = $("#previous-values");
-        if (panel) panel.innerHTML = previousValuesHtml();
+        renderPreviousValues();
+        break;
+      }
+      case "get-profile-bms-objects": {
+        await getProfileBmsObjects();
         break;
       }
       case "sort-bms-objects": {
@@ -2027,4 +2044,3 @@ clearLog("mqtt-log");
 clearLog("mqtt-raw-log");
 refreshMqtt();
 setInterval(refreshMqtt, 1200);
-setInterval(refreshPreviousValues, 4000);
