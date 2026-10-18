@@ -137,20 +137,25 @@ async function writeUplinkObjects(client, device, previousValues, log, getInitia
   return true;
 }
 
-async function readDownlinkObjects(client, device, previousValues, log, getInitialValues) {
+async function readDownlinkObjects(client, device, previousValues, log, getInitialValues, created = false) {
   const objects = objectsOf(device, "downlink");
   const request = objects.map((object) => ({
     objectId: objectId(object),
     properties: [{ id: PropertyIdentifier.PRESENT_VALUE, index: ARRAY_ALL }]
   }));
 
+  // After creating the missing objects (initialised from the schedule or the default), read them again
+  // so that the downlink decision uses the values that are now on the controller.
+  const createThenRead = async (missingObjects) => {
+    if (created || !(await createAndWriteObjects(client, device, missingObjects, previousValues, log, getInitialValues))) return false;
+    return readDownlinkObjects(client, device, previousValues, log, getInitialValues, true);
+  };
+
   let result;
   try {
     result = await client.readPropertyMultiple(controllerAddress(device), request);
   } catch (error) {
-    if (isUnknownObject(error)) {
-      return createAndWriteObjects(client, device, objects, previousValues, log, getInitialValues);
-    }
+    if (isUnknownObject(error)) return createThenRead(objects);
     log("error", `${device.identity.deviceName} (${protocolLabel(device)}): Error reading BACnet objects: ${describeError(error)}`);
     return false;
   }
@@ -174,7 +179,7 @@ async function readDownlinkObjects(client, device, previousValues, log, getIniti
   }
   if (missing.length > 0) {
     if (!ok) return false;
-    return createAndWriteObjects(client, device, missing, previousValues, log, getInitialValues);
+    return createThenRead(missing);
   }
   if (ok) {
     log("info", `${device.identity.deviceName} (${protocolLabel(device)}): Read downlink BACNet objects: ${objects.map((object) => object.objectName).join(", ")}`, undefined, "down");

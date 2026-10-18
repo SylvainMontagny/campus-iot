@@ -99,12 +99,14 @@ test("creates a missing downlink object and applies its configured default", asy
   const client = {
     writeProperty: async (address, id, property, values) => { writes.push({ id, values }); },
     createObject: async (address, id, properties) => { creates.push({ id, properties }); },
-    readPropertyMultiple: async () => ({
-      values: [{
-        objectId: { type: 2, instance: 5012 },
-        values: [{ id: 85, index: 4294967295, value: [{ type: ApplicationTag.ERROR, value: { errorClass: 1, errorCode: 31 } }] }]
-      }]
-    })
+    readPropertyMultiple: async () => (creates.length
+      ? { values: [{ objectId: { type: 2, instance: 5012 }, values: [{ id: 85, index: 4294967295, value: [{ type: 4, value: 0 }] }] }] }
+      : {
+        values: [{
+          objectId: { type: 2, instance: 5012 },
+          values: [{ id: 85, index: 4294967295, value: [{ type: ApplicationTag.ERROR, value: { errorClass: 1, errorCode: 31 } }] }]
+        }]
+      })
   };
 
   const outcome = await processBacnet(makeDevice(), { client });
@@ -121,7 +123,8 @@ test("uses the previously saved downlink value when provisioning", async () => {
     writeProperty: async () => {},
     createObject: async (address, id, properties) => { creates.push({ id, properties }); },
     readPropertyMultiple: async () => {
-      throw new Error("Unknown object");
+      if (!creates.length) throw new Error("Unknown object");
+      return { values: [{ objectId: { type: 2, instance: 5012 }, values: [{ id: 85, index: 4294967295, value: [{ type: 4, value: 17 }] }] }] };
     }
   };
   const previousValues = {
@@ -135,18 +138,27 @@ test("uses the previously saved downlink value when provisioning", async () => {
   assert.equal(creates[0].properties[1].value[0].value, 17);
 });
 
-test("creates a downlink object with the present value of its schedule", async () => {
+test("creates a downlink object with the present value of its schedule, then reads it again", async () => {
   const creates = [];
+  const reads = [];
   const client = {
     writeProperty: async () => {},
     createObject: async (address, id, properties) => { creates.push({ id, properties }); },
-    readPropertyMultiple: async () => { throw new Error("Unknown object"); }
+    readPropertyMultiple: async () => {
+      reads.push(creates.length);
+      if (!creates.length) throw new Error("Unknown object");
+      return { values: [{ objectId: { type: 2, instance: 5012 }, values: [{ id: 85, index: 4294967295, value: [{ type: 4, value: 21 }] }] }] };
+    }
   };
   const previousValues = { "valve-1": { bacnet: { objects: { setpoint: { value: 17 } } } } };
+  const device = makeDevice();
 
-  await processBacnet(makeDevice(), { client, previousValues, getInitialValues: async () => ({ setpoint: 21 }) });
+  const outcome = await processBacnet(device, { client, previousValues, getInitialValues: async () => ({ setpoint: 21 }) });
 
+  assert.deepEqual(outcome, { handled: true, ok: true });
   assert.equal(creates[0].properties[1].value[0].value, 21);
+  assert.deepEqual(reads, [0, 1]);
+  assert.equal(device.bacnet.objects.setpoint.value, 21);
 });
 
 test("recognizes unknown-object errors with controller-specific wording", () => {

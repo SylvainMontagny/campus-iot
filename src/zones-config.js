@@ -218,6 +218,46 @@ function validateZonesSchedules(data, { deviceProfiles = {}, connections = {} } 
   for (const [profileName, numbers] of Object.entries(usedNumbers)) {
     if (new Set(numbers).size !== numbers.length) errors.push(issue(`${profileName}: a device number is used more than once`, "In ZONES & SCHEDULES"));
   }
+  if (rangeValid && Number.isInteger(conf.scheduleAVInstanceOffset)) {
+    errors.push(...scheduleAvOverlaps(data.zones, { min, max, offset: conf.scheduleAVInstanceOffset, deviceProfiles, connections, isEventsZone }));
+  }
+  return errors;
+}
+
+// The scheduleAV analog values only exist on REST API BMS. Their instances must not fall in the
+// automatic AV range of any device profile, nor on one of its manual AV instances.
+function scheduleAvOverlaps(zones, { min, max, offset, deviceProfiles, connections, isEventsZone }) {
+  const errors = [];
+  const usesScheduleAV = zones.some((zone) => {
+    if (!zone || typeof zone !== "object" || isEventsZone(zone)) return false;
+    return connections[icalZoneConnections(zone, deviceProfiles)[0]]?.protocol === "restAPIBacnet";
+  });
+  if (!usesScheduleAV) return errors;
+
+  // The whole range is reserved: the REST driver clears every analog value of it at startup.
+  const first = offset + min;
+  const last = offset + max;
+  const hasOverlap = (start, end) => first < end && last >= start;
+  const path = "zonesSchedules.icalToScheduleConf.scheduleAVInstanceOffset";
+
+  for (const [profileName, definition] of Object.entries(deviceProfiles)) {
+    const bacnet = definition?.bacnet || {};
+    const range = bacnet.instanceRangeAV;
+    const maxDevNum = definition?.identity?.maxDevNum;
+    if (Number.isFinite(bacnet.offsetAV) && Number.isFinite(range) && Number.isFinite(maxDevNum)) {
+      const start = bacnet.offsetAV;
+      const end = bacnet.offsetAV + range * (maxDevNum + 1);
+      if (hasOverlap(start, end)) {
+        errors.push(issue(`The scheduleAV instances ${first} to ${last} (First scheduleAV instance number + schedule instance range) overlap the analog value range ${start} to ${end - 1} of device profile '${profileName}'`, path, { standalone: true }));
+      }
+    }
+    for (const [objectName, object] of Object.entries(bacnet.objects || {})) {
+      if (object?.objectType !== "analogValue" || object.assignementMode !== "manual") continue;
+      if (object.instanceNum >= first && object.instanceNum <= last) {
+        errors.push(issue(`The manual analog value '${objectName}' (instance ${object.instanceNum}) of device profile '${profileName}' is inside the scheduleAV range ${first} to ${last}`, path, { standalone: true }));
+      }
+    }
+  }
   return errors;
 }
 

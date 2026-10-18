@@ -522,12 +522,15 @@ function previousValuesHtml() {
     : row.direction !== "downlink" ? ""
       : !row.controlledBy ? "pv-downlink"
         : sameValue(row.controlledBy.presentValue, row.presentValue) ? "pv-scheduled" : "pv-mismatch");
-  const outdated = new Set(rows.filter((row) => rowClassOf(row) === "pv-mismatch" && row.deviceNum !== undefined).map((row) => row.deviceNum)).size;
+  const checked = (cls) => new Set(rows.filter((row) => rowClassOf(row) === cls && row.deviceNum !== undefined).map((row) => row.deviceNum));
+  const outdatedDevices = checked("pv-mismatch");
+  const total = new Set([...outdatedDevices, ...checked("pv-scheduled")]).size;
+  const outdated = outdatedDevices.size;
   const body = sorted.map((row) => {
     const rowClass = rowClassOf(row);
     return `<tr class="${rowClass}">${PREVIOUS_VALUE_COLUMNS.map(([key]) => `<td${CENTERED_COLUMNS.has(key) ? ` class="bms-center"` : ""}>${escapeHtml(String(text(row, key) ?? ""))}</td>`).join("")}</tr>`;
   }).join("");
-  return `${headingWith(`<span class="bms-outdated-notice">Number of devices with oudated value : ${outdated}</span>`)}<div class="bms-objects-table-wrap" data-scroll-key="pv:${escapeHtml(state.selectedDevice)}"><table class="bms-objects-table"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>`;
+  return `${headingWith(`<span class="bms-outdated-notice">Number of devices with oudated value : ${outdated}/${total}</span>`)}<div class="bms-objects-table-wrap" data-scroll-key="pv:${escapeHtml(state.selectedDevice)}"><table class="bms-objects-table"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>`;
 }
 
 function renderPreviousValues() {

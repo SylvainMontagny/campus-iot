@@ -141,6 +141,20 @@ async function runStream(device, dataDirection, ctx) {
       log("error", `${name} (${protocolLabel(device)}): Writing values after creation failed: ${describeFailure(written, request.url)}`);
       return false;
     }
+    if (dataDirection !== "downlink") return true;
+
+    // Read the objects again so the downlink decision uses the values that were just written.
+    const reread = await send(httpClient, request);
+    if (reread.status !== 200 || reread.data.includes("Unknown Object")) {
+      log("error", `${name} (${protocolLabel(device)}, ${dataDirection}): Reading the created objects failed: ${describeFailure(reread, request.url)}`);
+      return false;
+    }
+    try {
+      storeDownlinkValues(device, reread.data);
+    } catch (error) {
+      log("error", `${name} (${protocolLabel(device)}): Invalid downlink response: ${error.message}`);
+      return false;
+    }
     return true;
   }
 

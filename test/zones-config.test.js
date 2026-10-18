@@ -38,6 +38,46 @@ test("an iCal zone takes its BMS connection from its devices", () => {
   assert.equal(resolveZones(data, deviceProfiles)[0].connectionName, "bms");
 });
 
+test("scheduleAV instances must not overlap the analog value range of a device profile", () => {
+  const profiles = {
+    valve: { ...deviceProfiles.valve, bacnet: { offsetAV: 10000, instanceRangeAV: 10, objects: { setpoint: { dataDirection: "downlink", objectType: "analogValue", assignementMode: "auto", instanceNum: 0 } } } }
+  };
+  const data = makeData();
+  data.icalToScheduleConf.scheduleInstanceRange = [0, 9];
+  data.icalToScheduleConf.scheduleAVInstanceOffset = 10010;
+  const errors = validateZonesSchedules(data, { deviceProfiles: profiles, connections });
+  assert.equal(errors.length, 1);
+  assert.match(errors[0].message, /scheduleAV instances 10010 to 10019 .*overlap the analog value range 10000 to 10109/);
+
+  data.icalToScheduleConf.scheduleAVInstanceOffset = 10109;
+  assert.equal(validateZonesSchedules(data, { deviceProfiles: profiles, connections }).length, 1);
+  data.icalToScheduleConf.scheduleAVInstanceOffset = 10110;
+  assert.deepEqual(validateZonesSchedules(data, { deviceProfiles: profiles, connections }), []);
+  // the zone itself only uses 10005 but the whole range 10001-10010 is reserved
+  data.icalToScheduleConf.scheduleAVInstanceOffset = 10001;
+  assert.equal(validateZonesSchedules(data, { deviceProfiles: profiles, connections }).length, 1);
+  data.icalToScheduleConf.scheduleAVInstanceOffset = 10000;
+  assert.equal(validateZonesSchedules(data, { deviceProfiles: profiles, connections }).length, 1);
+  data.icalToScheduleConf.scheduleAVInstanceOffset = 9990;
+  assert.deepEqual(validateZonesSchedules(data, { deviceProfiles: profiles, connections }), []);
+  data.icalToScheduleConf.scheduleAVInstanceOffset = 9991;
+  assert.equal(validateZonesSchedules(data, { deviceProfiles: profiles, connections }).length, 1);
+});
+
+test("scheduleAV instances must not use a manual analog value instance, and native BMS zones have no scheduleAV", () => {
+  const profiles = {
+    valve: { ...deviceProfiles.valve, bacnet: { offsetAV: 0, instanceRangeAV: 1, objects: { setpoint: { dataDirection: "downlink", objectType: "analogValue", assignementMode: "manual", instanceNum: 10000 } } } }
+  };
+  const data = makeData();
+  data.icalToScheduleConf.scheduleInstanceRange = [0, 9];
+  data.icalToScheduleConf.scheduleAVInstanceOffset = 9995;
+  const errors = validateZonesSchedules(data, { deviceProfiles: profiles, connections });
+  assert.equal(errors.length, 1);
+  assert.match(errors[0].message, /manual analog value 'setpoint'/);
+  const nativeConnections = { bms: { protocol: "bacnet", ipAddress: "192.168.1.10" } };
+  assert.deepEqual(validateZonesSchedules(data, { deviceProfiles: profiles, connections: nativeConnections }), []);
+});
+
 test("an iCal zone without devices is an error", () => {
   const errors = validateZonesSchedules(makeData({ devices: {} }), { deviceProfiles, connections });
   assert.equal(errors.length, 1);
