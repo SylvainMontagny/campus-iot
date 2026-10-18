@@ -58,7 +58,7 @@ test("a schedule missing on the BMS (unknown object) is recreated with the same 
   };
   const driver = createNativeScheduleDriver({ ipAddress: "10.0.0.9" }, { client });
 
-  await driver.updateZoneSchedule({ scheduleID: 7, scheduleName: "z", weekly: {}, valueUnOccupied: 15 }, special);
+  await driver.updateZoneSchedule({ scheduleID: 7, scheduleName: "z", weekly: {}, valueUnOccupied: 15 }, special, { recreate: true });
 
   assert.deepEqual(calls[0], ["write", 7, PropertyIdentifier.EXCEPTION_SCHEDULE]);
   assert.deepEqual(calls[1], ["create", 7]);
@@ -66,6 +66,18 @@ test("a schedule missing on the BMS (unknown object) is recreated with the same 
   assert.deepEqual(calls.slice(-3).map((call) => call[2]), [
     PropertyIdentifier.EXCEPTION_SCHEDULE, PropertyIdentifier.WEEKLY_SCHEDULE, PropertyIdentifier.SCHEDULE_DEFAULT
   ]);
+});
+
+test("a missing schedule is never recreated unless requested (events added to an existing schedule)", async () => {
+  let created = false;
+  const client = {
+    createObject: async () => { created = true; },
+    writeProperty: async () => { throw new Error("BacnetError - Class:1 - Code:31"); }
+  };
+  const driver = createNativeScheduleDriver({ ipAddress: "10.0.0.9" }, { client });
+
+  await assert.rejects(driver.updateZoneSchedule({ scheduleID: 7, scheduleName: "z", weekly: {}, valueUnOccupied: 15 }, special));
+  assert.equal(created, false);
 });
 
 test("other write errors do not recreate the schedule", async () => {

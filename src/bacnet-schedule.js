@@ -128,11 +128,12 @@ function createNativeScheduleDriver(connection, { client, log = () => {}, device
   }
 
   // An unknown object means the schedule is missing on the BMS: it is recreated with the same instance, then written again once.
-  async function updateZoneSchedule(zone, special) {
+  async function updateZoneSchedule(zone, special, { recreate = false } = {}) {
     try {
       await writeZoneSchedule(zone, special);
     } catch (error) {
       if (!isUnknownObject(error)) throw error;
+      if (!recreate) throw new Error(`object schedule ${zone.scheduleID} not found on the controller`);
       log("warning", `Schedule ${zone.scheduleID} (${zone.scheduleName}) not found on the BMS, recreating it`);
       await create(scheduleId(zone.scheduleID), zone.scheduleName);
       await initializeSchedule(zone, deviceProfiles);

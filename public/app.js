@@ -746,7 +746,7 @@ function renderZone() {
       <div class="field-grid">
         <div class="field-row">${zoneField(selectField("Global configuration applied to this zone", "configuration", confKeyOfZone(zone), SCHEDULE_CONFIGS))}</div>
         <div class="${eventsOnly ? "field-pair" : "field-row"}">${zoneField(inputField("Zone / schedule name", "scheduleName", zone.scheduleName))}${eventsOnly ? zoneField(inputField("BACnet schedule ID", "scheduleID", zone.scheduleID ?? "", { type: "number", min: 0, step: 1 })) : ""}</div>
-        <div class="field-row">${zoneField(selectField("On which BMS will be the BACnet schedule object?", "connectionName", zone.connectionName || "", connectionOptions))}</div>
+        <div class="field-row">${zoneField(selectField("On which BMS is the BACnet schedule object?", "connectionName", zone.connectionName || "", connectionOptions))}</div>
         <div class="field-row"><div class="zone-url-test">${zoneField(inputField("iCal URL", "url", zone.url, { placeholder: "https://" }))}<button class="button button-primary" type="button" data-action="test-ical">Test</button></div></div>
       </div>
       ${advancedPanel(`zone:${state.selectedZone}`, `<div class="field-grid">${scheduleSettingRows(SCHEDULE_ROWS, (key) => zone[key] ?? defaults[key], "data-zone-field", false, grouped)}</div>`)}

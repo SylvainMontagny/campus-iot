@@ -244,7 +244,8 @@ function createIcalScheduleService({ log = () => {} } = {}) {
 
   async function updateZoneSchedule(driver, zone) {
     const special = buildSpecialEvents(zone, await fetchEvents(zone), (message) => log("warning", message));
-    await driver.updateZoneSchedule(zone, special);
+    // Schedules are only recreated for zones that own them; events added to an existing schedule never create it.
+    await driver.updateZoneSchedule(zone, special, { recreate: zone.configuration !== SCHEDULE_EVENTS });
   }
 
   async function updateAllSchedules(driver, zones, label, active, conf) {
@@ -312,17 +313,22 @@ function createIcalScheduleService({ log = () => {} } = {}) {
       setupScheduleAV: (zones, conf) => setupScheduleAV(api, zones, conf),
       setupBindings: (zones, conf, deviceProfiles) => setupBindings(api, zones, conf, deviceProfiles),
       updateScheduleAV: (zones, conf, label) => updateScheduleAV(api, zones, conf, label),
-      updateZoneSchedule: async (zone, special) => {
+      updateZoneSchedule: async (zone, special, { recreate = false } = {}) => {
+        const write = () => api.post(`/services/bacnet/local/objects/schedules/${zone.scheduleID}`, {
+          "special-events": special,
+          "weekly-schedule": zone.weekly,
+          "object-name": zone.scheduleName,
+          "schedule-default": zone.valueUnOccupied
+        });
         try {
-          await api.post(`/services/bacnet/local/objects/schedules/${zone.scheduleID}`, {
-            "special-events": special,
-            "weekly-schedule": zone.weekly,
-            "object-name": zone.scheduleName,
-            "schedule-default": zone.valueUnOccupied
-          });
+          await write();
         } catch (error) {
-          if (error.response?.status === 404) throw new Error(`object schedule ${zone.scheduleID} not found on the controller`);
-          throw error;
+          if (error.response?.status !== 404) throw error;
+          if (!recreate) throw new Error(`object schedule ${zone.scheduleID} not found on the controller`);
+          log("warning", `Schedule ${zone.scheduleID} (${zone.scheduleName}) not found on the BMS, recreating it`);
+          await api.post("/services/bacnet/local/objects/add", { "object-type": "schedule", "instance-number": zone.scheduleID, name: zone.scheduleName });
+          await api.post(`/services/bacnet/local/objects/schedules/${zone.scheduleID}`, { "schedule-default": 19, description: `Zone ${zone.scheduleName}` });
+          await write();
         }
       }
     };
