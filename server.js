@@ -376,7 +376,7 @@ app.put("/api/config", async (request, response, next) => {
     const warnings = zonesSchedules === undefined ? [] : findDuplicateIcalUrls(zonesSchedules.zones);
     if (zonesSchedules !== undefined) {
       await writeZonesSchedules(zonesSchedules);
-      const zones = resolveZones(zonesSchedules);
+      const zones = resolveZones(zonesSchedules, config.deviceProfiles);
       mqttService.log("output", `Zones & Schedules saved.\nzones = ${JSON.stringify(zones, null, 2)}\nicalToScheduleConf = ${JSON.stringify(zonesSchedules.icalToScheduleConf, null, 2)}\nscheduleEventsConf = ${JSON.stringify(zonesSchedules.scheduleEventsConf, null, 2)}`);
       startZonesSchedules(zonesSchedules, config);
     }

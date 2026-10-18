@@ -21,30 +21,38 @@ function makeData(zone = {}) {
   return data;
 }
 
-test("a zone and its device profiles must use the same BMS connection", () => {
+test("all devices of an iCal zone must use the same BMS connection", () => {
   const otherConnections = { ...connections, other: { protocol: "bacnet", ipAddress: "10.0.0.2" } };
-  const errors = validateZonesSchedules(makeData({ connectionName: "other" }), { deviceProfiles, connections: otherConnections });
+  const profiles = { ...deviceProfiles, valve2: { ...deviceProfiles.valve, controller: { connectionName: "other" } } };
+  const data = makeData();
+  data.zones[0].devices.valve2 = { deviceNums: [1], AVToBindName: "setpoint" };
+  const errors = validateZonesSchedules(data, { deviceProfiles: profiles, connections: otherConnections });
   assert.equal(errors.length, 1);
-  assert.equal(errors[0].path, "zonesSchedules.zones.0.connectionName");
-  assert.match(errors[0].message, /'valve' uses the BMS connection 'bms', but this zone's schedule is on 'other'/);
+  assert.equal(errors[0].standalone, true);
+  assert.match(errors[0].message, /devices use different BMS connections \(bms, other\)/);
+});
+
+test("an iCal zone takes its BMS connection from its devices", () => {
+  const data = makeData({ connectionName: undefined });
+  assert.deepEqual(validateZonesSchedules(data, { deviceProfiles, connections }), []);
+  assert.equal(resolveZones(data, deviceProfiles)[0].connectionName, "bms");
 });
 
 test("a complete zone configuration is valid", () => {
   assert.deepEqual(validateZonesSchedules(makeData(), { deviceProfiles, connections }), []);
 });
 
-test("a missing BMS connection names the zone in a standalone message", () => {
-  const errors = validateZonesSchedules(makeData({ connectionName: "missing" }), { deviceProfiles, connections });
+test("a missing BMS connection of the devices names the zone in a standalone message", () => {
+  const errors = validateZonesSchedules(makeData(), { deviceProfiles, connections: {} });
   const [error] = errors.filter((item) => item.path === "zonesSchedules.zones.0.connectionName");
   assert.equal(error.message, "BMS connection for zone 8D-120 doesn't exist");
   assert.equal(error.standalone, true);
 });
 
 test("invalid zones are reported with their path", () => {
-  const data = makeData({ connectionName: "missing", devices: { valve: { deviceNums: [11], AVToBindName: "temperature" } } });
+  const data = makeData({ devices: { valve: { deviceNums: [11], AVToBindName: "temperature" } } });
   const paths = validateZonesSchedules(data, { deviceProfiles, connections }).map((error) => error.path);
   assert.deepEqual(paths.sort(), [
-    "zonesSchedules.zones.0.connectionName",
     "zonesSchedules.zones.0.devices.valve.AVToBindName",
     "zonesSchedules.zones.0.devices.valve.deviceNums"
   ]);

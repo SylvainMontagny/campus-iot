@@ -155,8 +155,18 @@ function validateZonesSchedules(data, { deviceProfiles = {}, connections = {} } 
     }
     names.add(zone.scheduleName);
 
-    const connection = connections[zone.connectionName];
-    if (!connection) errors.push(issue(`BMS connection for zone ${zone.scheduleName || index + 1} doesn't exist`, `${zonePath}.connectionName`, { standalone: true }));
+    let connectionName = zone.connectionName;
+    if (!isEventsZone(zone)) {
+      const deviceConnections = icalZoneConnections(zone, deviceProfiles);
+      if (deviceConnections.length > 1) {
+        errors.push(issue(`Zone ${zone.scheduleName || index + 1}: its devices use different BMS connections (${deviceConnections.map((name) => name || "none").join(", ")}). All devices of a zone must use the same BMS connection`, `${zonePath}.devices`, { standalone: true }));
+      }
+      connectionName = deviceConnections[0];
+    }
+    const connection = connections[connectionName];
+    if (connectionName === undefined) {
+      // iCal zone without devices: nothing to schedule yet, so no BMS connection is needed.
+    } else if (!connection) errors.push(issue(`BMS connection for zone ${zone.scheduleName || index + 1} doesn't exist`, `${zonePath}.connectionName`, { standalone: true }));
     else if (!["restAPIBacnet", "bacnet"].includes(connection.protocol)) errors.push(issue("Zones & Schedules needs a 'BACnet' or 'REST API BACnet' connection", `${zonePath}.connectionName`));
     else if (!connection.ipAddress) errors.push(issue("The BMS connection has no IP address", `${zonePath}.connectionName`));
 
@@ -189,10 +199,6 @@ function validateZonesSchedules(data, { deviceProfiles = {}, connections = {} } 
         continue;
       }
       const object = definition.bacnet?.objects?.[device?.AVToBindName];
-      const profileConnection = definition.controller?.connectionName || "";
-      if (connections[zone.connectionName] && profileConnection !== zone.connectionName) {
-        errors.push(issue(`Device profile '${profileName}' uses the BMS connection '${profileConnection || "none"}', but this zone's schedule is on '${zone.connectionName}'. Both must be the same BMS connection`, `${zonePath}.connectionName`, { standalone: true }));
-      }
       if (!object) errors.push(issue(`Object '${device?.AVToBindName}' does not exist in '${profileName}'`, `${devicePath}.AVToBindName`));
       else if (object.dataDirection !== "downlink") errors.push(issue(`'${device.AVToBindName}' is not a downlink object`, `${devicePath}.AVToBindName`));
 
@@ -214,7 +220,12 @@ function validateZonesSchedules(data, { deviceProfiles = {}, connections = {} } 
 
 // Fills every setting a zone does not override from the global defaults of its configuration.
 // Zones of the ical configuration get consecutive schedule instance numbers; the others keep their own schedule ID.
-function resolveZones({ icalToScheduleConf, scheduleEventsConf, zones }) {
+// The BMS connection of an iCal zone is the one of its devices (first device's profile; validation ensures they all match).
+function icalZoneConnections(zone, deviceProfiles = {}) {
+  return [...new Set(Object.keys(zone.devices || {}).map((profileName) => deviceProfiles[profileName]?.controller?.connectionName || ""))];
+}
+
+function resolveZones({ icalToScheduleConf, scheduleEventsConf, zones }, deviceProfiles = {}) {
   const [min] = icalToScheduleConf.scheduleInstanceRange;
   let icalIndex = 0;
   return zones.map((zone) => {
@@ -224,6 +235,7 @@ function resolveZones({ icalToScheduleConf, scheduleEventsConf, zones }) {
     const defaults = eventsOnly ? scheduleEventsConf.defaults : icalToScheduleConf.defaults;
     for (const [key, value] of Object.entries(defaults)) resolved[key] ??= structuredClone(value);
     if (!eventsOnly) {
+      resolved.connectionName = icalZoneConnections(zone, deviceProfiles)[0] || "";
       resolved.scheduleID = min + icalIndex;
       icalIndex++;
     }

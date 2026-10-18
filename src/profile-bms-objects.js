@@ -14,7 +14,7 @@ function buildBmsObjectRows({ deviceProfile, definition, connectionName, bmsObje
 
   let zones = [];
   try {
-    zones = zonesSchedules ? resolveZones(zonesSchedules).filter((zone) => zone.configuration === ICAL_TO_SCHEDULE && zone.connectionName === connectionName) : [];
+    zones = zonesSchedules ? resolveZones(zonesSchedules).filter((zone) => zone.configuration === ICAL_TO_SCHEDULE && zone.devices?.[deviceProfile]) : [];
   } catch {
     zones = [];
   }

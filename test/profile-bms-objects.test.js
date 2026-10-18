@@ -51,7 +51,3 @@ test("only the BMS objects of the profile are listed, downlink ones with their s
 test("a device that is not listed in the zone is not controlled by its schedule", () => {
   assert.ok(build("bms", [5]).every((row) => row.controlledBy === null));
 });
-
-test("a zone on another BMS connection does not control the objects", () => {
-  assert.ok(build("other", [2]).every((row) => row.controlledBy === null));
-});

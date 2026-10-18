@@ -356,8 +356,9 @@ function createIcalScheduleService({ log = () => {} } = {}) {
 
     // Groups are per BMS connection and per configuration.
     const groups = new Map();
-    for (const zone of resolveZones(data)) {
+    for (const zone of resolveZones(data, deviceProfiles)) {
       const eventsOnly = zone.configuration === SCHEDULE_EVENTS;
+      if (!zone.connectionName) continue;
       const key = `${eventsOnly ? "events" : "ical"}|${zone.connectionName}`;
       if (!groups.has(key)) {
         groups.set(key, {
