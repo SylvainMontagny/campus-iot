@@ -83,22 +83,27 @@ function createObject(client, address, object, value) {
   ]);
 }
 
-function downlinkValue(device, object, previousValues) {
+function downlinkValue(device, object, previousValues, initialValues = {}) {
   if (object.dataDirection !== "downlink") return object.value;
   const entry = Object.entries(device.bacnet.objects).find(([, candidate]) => candidate === object);
   const previous = entry && previousValues?.[device.identity.deviceName]?.bacnet?.objects?.[entry[0]]?.value;
-  return previous ?? object.value;
+  // A schedule that controls the object wins over the last known value and the profile default.
+  return (entry && initialValues[entry[0]]) ?? previous ?? object.value;
 }
 
-async function createAndWriteObjects(client, device, objects, previousValues, log) {
+async function createAndWriteObjects(client, device, objects, previousValues, log, getInitialValues) {
   const address = controllerAddress(device);
   const names = objects.map((object) => object.objectName).join(", ");
   log("info", `${device.identity.deviceName} (${protocolLabel(device)}): Creating BACnet objects: ${names}`, undefined, "creation");
 
+  const initialValues = objects.some((object) => object.dataDirection === "downlink")
+    ? await getInitialValues?.(device).catch(() => ({})) ?? {}
+    : {};
+
   // One CreateObject request per object, awaited (ACK) before the next one.
   for (const object of objects) {
     try {
-      await createObject(client, address, object, downlinkValue(device, object, previousValues));
+      await createObject(client, address, object, downlinkValue(device, object, previousValues, initialValues));
     } catch (error) {
       log("error", `${device.identity.deviceName} (${protocolLabel(device)}): Error creating BACnet object ${object.objectName}: ${describeError(error)}`);
       return false;
@@ -107,7 +112,7 @@ async function createAndWriteObjects(client, device, objects, previousValues, lo
   return true;
 }
 
-async function writeUplinkObjects(client, device, previousValues, log) {
+async function writeUplinkObjects(client, device, previousValues, log, getInitialValues) {
   const address = controllerAddress(device);
   const objects = objectsOf(device, "uplink");
   const results = await Promise.allSettled(
@@ -126,13 +131,13 @@ async function writeUplinkObjects(client, device, previousValues, log) {
     log("error", `${device.identity.deviceName} (${protocolLabel(device)}): Error writing BACnet object ${objects[index].objectName}: ${describeError(result.reason)}`);
   });
   if (!ok) return false;
-  if (missing.length > 0 && !(await createAndWriteObjects(client, device, missing, previousValues, log))) return false;
+  if (missing.length > 0 && !(await createAndWriteObjects(client, device, missing, previousValues, log, getInitialValues))) return false;
 
   log("info", `${device.identity.deviceName} (${protocolLabel(device)}): Wrote uplink BACNet objects: ${objects.map((object) => object.objectName).join(", ")}`, undefined, "up");
   return true;
 }
 
-async function readDownlinkObjects(client, device, previousValues, log) {
+async function readDownlinkObjects(client, device, previousValues, log, getInitialValues) {
   const objects = objectsOf(device, "downlink");
   const request = objects.map((object) => ({
     objectId: objectId(object),
@@ -144,7 +149,7 @@ async function readDownlinkObjects(client, device, previousValues, log) {
     result = await client.readPropertyMultiple(controllerAddress(device), request);
   } catch (error) {
     if (isUnknownObject(error)) {
-      return createAndWriteObjects(client, device, objects, previousValues, log);
+      return createAndWriteObjects(client, device, objects, previousValues, log, getInitialValues);
     }
     log("error", `${device.identity.deviceName} (${protocolLabel(device)}): Error reading BACnet objects: ${describeError(error)}`);
     return false;
@@ -169,7 +174,7 @@ async function readDownlinkObjects(client, device, previousValues, log) {
   }
   if (missing.length > 0) {
     if (!ok) return false;
-    return createAndWriteObjects(client, device, missing, previousValues, log);
+    return createAndWriteObjects(client, device, missing, previousValues, log, getInitialValues);
   }
   if (ok) {
     log("info", `${device.identity.deviceName} (${protocolLabel(device)}): Read downlink BACNet objects: ${objects.map((object) => object.objectName).join(", ")}`, undefined, "down");
@@ -178,18 +183,18 @@ async function readDownlinkObjects(client, device, previousValues, log) {
 }
 
 /** Native BACnet: writes uplink objects, then reads downlink objects into device.bacnet.objects[*].value. */
-async function processBacnet(device, { client, previousValues = {}, timeout = DEFAULT_TIMEOUT_MS, log = () => {} } = {}) {
+async function processBacnet(device, { client, previousValues = {}, timeout = DEFAULT_TIMEOUT_MS, log = () => {}, getInitialValues } = {}) {
   if (device?.controller?.protocol !== "bacnet") return { handled: false };
 
   const bacnetClient = client ?? getClient(timeout);
   const hasDownlink = objectsOf(device, "downlink").length > 0;
 
   if (objectsOf(device, "uplink").length > 0) {
-    if (!(await writeUplinkObjects(bacnetClient, device, previousValues, log))) return { handled: true, ok: false };
+    if (!(await writeUplinkObjects(bacnetClient, device, previousValues, log, getInitialValues))) return { handled: true, ok: false };
     logDeviceObject(log, device, "uplink");
   }
   if (hasDownlink) {
-    if (!(await readDownlinkObjects(bacnetClient, device, previousValues, log))) return { handled: true, ok: false };
+    if (!(await readDownlinkObjects(bacnetClient, device, previousValues, log, getInitialValues))) return { handled: true, ok: false };
     logDeviceObject(log, device, "downlink");
   }
 

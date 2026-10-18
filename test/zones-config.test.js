@@ -38,6 +38,13 @@ test("an iCal zone takes its BMS connection from its devices", () => {
   assert.equal(resolveZones(data, deviceProfiles)[0].connectionName, "bms");
 });
 
+test("an iCal zone without devices is an error", () => {
+  const errors = validateZonesSchedules(makeData({ devices: {} }), { deviceProfiles, connections });
+  assert.equal(errors.length, 1);
+  assert.match(errors[0].message, /Zone 8D-120: it has no device/);
+  assert.equal(errors[0].standalone, true);
+});
+
 test("a complete zone configuration is valid", () => {
   assert.deepEqual(validateZonesSchedules(makeData(), { deviceProfiles, connections }), []);
 });

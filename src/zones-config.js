@@ -158,6 +158,9 @@ function validateZonesSchedules(data, { deviceProfiles = {}, connections = {} } 
     let connectionName = zone.connectionName;
     if (!isEventsZone(zone)) {
       const deviceConnections = icalZoneConnections(zone, deviceProfiles);
+      if (!deviceConnections.length) {
+        errors.push(issue(`Zone ${zone.scheduleName || index + 1}: it has no device. Add at least one LoRaWAN device to this zone`, `${zonePath}.devices`, { standalone: true }));
+      }
       if (deviceConnections.length > 1) {
         errors.push(issue(`Zone ${zone.scheduleName || index + 1}: its devices use different BMS connections (${deviceConnections.map((name) => name || "none").join(", ")}). All devices of a zone must use the same BMS connection`, `${zonePath}.devices`, { standalone: true }));
       }
@@ -165,7 +168,7 @@ function validateZonesSchedules(data, { deviceProfiles = {}, connections = {} } 
     }
     const connection = connections[connectionName];
     if (connectionName === undefined) {
-      // iCal zone without devices: nothing to schedule yet, so no BMS connection is needed.
+      // No devices: already reported above, so there is no connection to check.
     } else if (!connection) errors.push(issue(`BMS connection for zone ${zone.scheduleName || index + 1} doesn't exist`, `${zonePath}.connectionName`, { standalone: true }));
     else if (!["restAPIBacnet", "bacnet"].includes(connection.protocol)) errors.push(issue("Zones & Schedules needs a 'BACnet' or 'REST API BACnet' connection", `${zonePath}.connectionName`));
     else if (!connection.ipAddress) errors.push(issue("The BMS connection has no IP address", `${zonePath}.connectionName`));

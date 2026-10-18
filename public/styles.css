@@ -314,6 +314,8 @@ button { cursor: pointer; }
 .bms-objects-status { margin: 8px 0 0; color: #5b6770; }
 .bms-objects-status.is-error { color: #b42318; }
 .bms-objects-table-wrap { max-height: 480px; overflow: auto; border: 1px solid #d9dee3; border-radius: 6px; }
+.previous-values .bms-objects-table-wrap { max-height: 960px; }
+.bms-outdated-notice { margin-left: 12px; align-self: center; font-size: 0.9rem; color: #e67e22; font-weight: 600; }
 .bms-objects-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
 .bms-objects-table th, .bms-objects-table td { padding: 6px 10px; text-align: left; vertical-align: top; border-bottom: 1px solid #e8ebee; overflow-wrap: anywhere; white-space: pre-line; }
 .bms-objects-table th { position: sticky; top: 0; background: #f3f5f7; }

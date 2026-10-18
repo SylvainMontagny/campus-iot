@@ -504,7 +504,8 @@ function previousValuesHtml() {
   const result = state.previousValues?.[state.selectedDevice];
   const rows = result?.rows ?? [];
   const busy = Boolean(result?.loading);
-  const heading = `<h3>Objects on the BMS</h3><div class="mqtt-actions"><button class="button button-primary" type="button" data-action="get-profile-bms-objects"${busy ? " disabled" : ""}>Get BMS objects</button></div>`;
+  const headingWith = (extra = "") => `<h3>Objects on the BMS</h3><div class="mqtt-actions"><button class="button button-primary" type="button" data-action="get-profile-bms-objects"${busy ? " disabled" : ""}>Get BMS objects</button>${extra}</div>`;
+  const heading = headingWith();
   if (busy) return `${heading}<p class="bms-objects-status">Reading the object list…</p>`;
   if (result?.error) return `${heading}<p class="bms-objects-status is-error">${escapeHtml(result.error)}</p>`;
   if (!result) return `${heading}<p class="bms-objects-status">Press "Get BMS objects" to read the objects of this device profile on the BMS.</p>`;
@@ -517,14 +518,16 @@ function previousValuesHtml() {
     return `<th${CENTERED_COLUMNS.has(key) ? ` class="bms-center"` : ""}><button class="bms-sort${sort?.key === key ? " is-active" : ""}" type="button" data-action="sort-previous-values" data-key="${key}" title="Sort by ${label.toLowerCase()}">${label}<span aria-hidden="true">${arrow}</span></button></th>`;
   }).join("");
   const sameValue = (a, b) => (a !== "" && b !== "" && !Number.isNaN(Number(a)) && !Number.isNaN(Number(b)) ? Number(a) === Number(b) : String(a) === String(b));
-  const body = sorted.map((row) => {
-    const rowClass = row.direction === "uplink" ? (row.downlinkPolicy === "due" ? "pv-mismatch" : row.downlinkPolicy === "ok" ? "pv-scheduled" : "")
-      : row.direction !== "downlink" ? ""
+  const rowClassOf = (row) => (row.direction === "uplink" ? (row.downlinkPolicy === "due" ? "pv-mismatch" : row.downlinkPolicy === "ok" ? "pv-scheduled" : "")
+    : row.direction !== "downlink" ? ""
       : !row.controlledBy ? "pv-downlink"
-        : sameValue(row.controlledBy.presentValue, row.presentValue) ? "pv-scheduled" : "pv-mismatch";
+        : sameValue(row.controlledBy.presentValue, row.presentValue) ? "pv-scheduled" : "pv-mismatch");
+  const outdated = new Set(rows.filter((row) => rowClassOf(row) === "pv-mismatch" && row.deviceNum !== undefined).map((row) => row.deviceNum)).size;
+  const body = sorted.map((row) => {
+    const rowClass = rowClassOf(row);
     return `<tr class="${rowClass}">${PREVIOUS_VALUE_COLUMNS.map(([key]) => `<td${CENTERED_COLUMNS.has(key) ? ` class="bms-center"` : ""}>${escapeHtml(String(text(row, key) ?? ""))}</td>`).join("")}</tr>`;
   }).join("");
-  return `${heading}<div class="bms-objects-table-wrap" data-scroll-key="pv:${escapeHtml(state.selectedDevice)}"><table class="bms-objects-table"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>`;
+  return `${headingWith(`<span class="bms-outdated-notice">Number of devices with oudated value : ${outdated}</span>`)}<div class="bms-objects-table-wrap" data-scroll-key="pv:${escapeHtml(state.selectedDevice)}"><table class="bms-objects-table"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>`;
 }
 
 function renderPreviousValues() {

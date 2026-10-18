@@ -135,6 +135,20 @@ test("uses the previously saved downlink value when provisioning", async () => {
   assert.equal(creates[0].properties[1].value[0].value, 17);
 });
 
+test("creates a downlink object with the present value of its schedule", async () => {
+  const creates = [];
+  const client = {
+    writeProperty: async () => {},
+    createObject: async (address, id, properties) => { creates.push({ id, properties }); },
+    readPropertyMultiple: async () => { throw new Error("Unknown object"); }
+  };
+  const previousValues = { "valve-1": { bacnet: { objects: { setpoint: { value: 17 } } } } };
+
+  await processBacnet(makeDevice(), { client, previousValues, getInitialValues: async () => ({ setpoint: 21 }) });
+
+  assert.equal(creates[0].properties[1].value[0].value, 21);
+});
+
 test("recognizes unknown-object errors with controller-specific wording", () => {
   assert.equal(isUnknownObject(new Error("Object lookup failed: class 1, error code 31")), true);
   assert.equal(isUnknownObject(new Error("UnKnOwN object identifier")), true);

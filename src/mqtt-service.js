@@ -156,7 +156,7 @@ function mapIncomingPacket(topic, rawPayload, deviceProfiles) {
   return { device };
 }
 
-function createMqttService({ getDeviceProfiles, onLog = () => {}, clientFactory = mqtt.connect, restApiBacnetHandler = processRestApiBacnet, bacnetHandler = processBacnet } = {}) {
+function createMqttService({ getDeviceProfiles, getScheduleValues, onLog = () => {}, clientFactory = mqtt.connect, restApiBacnetHandler = processRestApiBacnet, bacnetHandler = processBacnet } = {}) {
   const protocolHandlers = { restAPIBacnet: restApiBacnetHandler, bacnet: bacnetHandler };
   const previousValues = {};
   let client = null;
@@ -291,7 +291,7 @@ function createMqttService({ getDeviceProfiles, onLog = () => {}, clientFactory 
             if (Object.keys(result.device.bacnet.objects).length === 0) {
               addLog("warning", `${name}: Device profile '${result.device.identity.deviceProfile}' has no association between LoRa payload and BACnet object`);
             } else if (protocolHandler) {
-              const outcome = await protocolHandler(result.device, { previousValues, log: deviceLog });
+              const outcome = await protocolHandler(result.device, { previousValues, log: deviceLog, getInitialValues: getScheduleValues });
               if (outcome?.ok) await sendDownlink(result.device, deviceLog);
             }
           }

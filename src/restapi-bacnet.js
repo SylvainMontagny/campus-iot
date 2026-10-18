@@ -65,13 +65,14 @@ function buildCreateRequest(device, timeout) {
   return buildRequest(device.controller, "/batch", { requests }, timeout);
 }
 
-// Downlink objects are written with their last known value, if any.
-function buildWriteValuesRequest(device, previousValues, timeout) {
+// Downlink objects are written with the present value of their schedule when a zone controls them,
+// else with their last known value, else with the profile default.
+function buildWriteValuesRequest(device, previousValues, timeout, initialValues = {}) {
   const references = Object.entries(device.bacnet.objects).map(([key, object]) => {
     let value = object.value;
     if (object.dataDirection === "downlink") {
       const previous = previousValues?.[device.identity.deviceName]?.bacnet?.objects?.[key]?.value;
-      value = previous ?? value;
+      value = initialValues[key] ?? previous ?? value;
     }
     return { type: object.objectType, instance: object.instanceNum, property: "presentValue", value };
   });
@@ -115,7 +116,7 @@ function storeDownlinkValues(device, payload) {
 
 // Returns true when the stream completed without error.
 async function runStream(device, dataDirection, ctx) {
-  const { httpClient, previousValues, timeout, log } = ctx;
+  const { httpClient, previousValues, timeout, log, getInitialValues } = ctx;
   const name = device.identity.deviceName;
 
   const request = buildReadWriteRequest(device, dataDirection, timeout);
@@ -134,7 +135,8 @@ async function runStream(device, dataDirection, ctx) {
       log("error", `${name} (${protocolLabel(device)}): Object creation failed: ${describeFailure(created, request.url)}`);
       return false;
     }
-    const written = await send(httpClient, buildWriteValuesRequest(device, previousValues, timeout));
+    const initialValues = await getInitialValues?.(device).catch(() => ({})) ?? {};
+    const written = await send(httpClient, buildWriteValuesRequest(device, previousValues, timeout, initialValues));
     if (written.status !== 200) {
       log("error", `${name} (${protocolLabel(device)}): Writing values after creation failed: ${describeFailure(written, request.url)}`);
       return false;
@@ -167,14 +169,14 @@ function logDeviceObject(log, device, dataDirection) {
  * Uplink stream (write), then downlink stream (read + store) if the device has downlink objects.
  * Mutates device.bacnet.objects[*].value with downlink values read from the controller.
  */
-async function processRestApiBacnet(device, { httpClient = defaultHttpClient, previousValues = {}, timeout = DEFAULT_TIMEOUT_MS, log = () => {} } = {}) {
+async function processRestApiBacnet(device, { httpClient = defaultHttpClient, previousValues = {}, timeout = DEFAULT_TIMEOUT_MS, log = () => {}, getInitialValues } = {}) {
   if (device?.controller?.protocol !== "restAPIBacnet") return { handled: false };
   if (device.controller.model !== "distechControlsV2") {
     log("error", `${device.identity.deviceName}: Unknown controller model: ${device.controller.model}`);
     return { handled: true, ok: false };
   }
 
-  const ctx = { httpClient, previousValues, timeout, log };
+  const ctx = { httpClient, previousValues, timeout, log, getInitialValues };
   const objects = Object.values(device.bacnet.objects);
 
   if (objects.some((object) => object.dataDirection === "uplink")) {

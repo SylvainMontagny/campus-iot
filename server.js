@@ -12,13 +12,23 @@ const { listBmsObjects, deleteBmsObjects } = require("./src/bms-objects");
 const { discoverBmsDevices } = require("./src/bms-discovery");
 const { buildBmsObjectRows } = require("./src/profile-bms-objects");
 const { testIcalUrl } = require("./src/ical-test");
+const { scheduleInitialValues } = require("./src/schedule-initial-values");
 const { version } = require("./package.json");
 
 const app = express();
 const port = Number(process.env.PORT) || 3000;
 const dataDirectory = path.join(__dirname, "data");
 const mqttService = createMqttService({
-  getDeviceProfiles: async () => (await readConfig()).deviceProfiles
+  getDeviceProfiles: async () => (await readConfig()).deviceProfiles,
+  // Present value of the schedules controlling the downlink objects, used when those objects are created on the BMS.
+  getScheduleValues: async (device) => {
+    const config = await readConfig();
+    return scheduleInitialValues(device, {
+      zonesSchedules: await readZonesSchedules(),
+      deviceProfiles: config.deviceProfiles,
+      connections: config.connections
+    });
+  }
 });
 const scheduleService = createIcalScheduleService({ log: (level, message) => mqttService.log(level, message) });
 
