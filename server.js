@@ -6,7 +6,7 @@ const { validateConfig } = require("./src/config-validation");
 const { createDefaultConfig } = require("./src/default-config");
 const { createMqttService } = require("./src/mqtt-service");
 const { createIcalScheduleService } = require("./src/ical-schedule");
-const { createDefaultZonesSchedules, createDefaultScheduleEventsConf, validateZonesSchedules, resolveZones, findDuplicateIcalUrls } = require("./src/zones-config");
+const { createDefaultZonesSchedules, createDefaultScheduleEventsConf, validateZonesSchedules, resolveZones, findDuplicateIcalUrls, SCHEDULE_EVENTS } = require("./src/zones-config");
 const { testBmsConnection } = require("./src/bms-test");
 const { listBmsObjects, deleteBmsObjects } = require("./src/bms-objects");
 const { discoverBmsDevices } = require("./src/bms-discovery");
@@ -134,7 +134,7 @@ async function writeZonesSchedules(zonesSchedules, directory = dataDirectory) {
   await writeJsonAtomically(path.join(directory, "zones-schedules.json"), {
     icalToScheduleConf: zonesSchedules.icalToScheduleConf,
     scheduleEventsConf: zonesSchedules.scheduleEventsConf ?? createDefaultScheduleEventsConf(),
-    zones: zonesSchedules.zones,
+    zones: zonesSchedules.zones.map(({ connectionName, ...zone }) => (zone.configuration === SCHEDULE_EVENTS ? { ...zone, connectionName } : zone)),
     excludedZones: zonesSchedules.excludedZones || []
   });
 }

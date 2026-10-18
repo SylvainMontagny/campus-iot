@@ -50,10 +50,37 @@ function buildBmsObjectRows({ deviceProfile, definition, connectionName, bmsObje
       name: value.name,
       presentValue: value.presentValue ?? "",
       direction: match.object.dataDirection,
-      controlledBy: zone ? { scheduleName: zone.scheduleName, presentValue: scheduleValues.get(zone.scheduleID) ?? "" } : null
+      objectName: match.objectName,
+      deviceNum: match.deviceNum,
+      controlledBy: zone ? { scheduleName: zone.scheduleName, presentValue: scheduleValues.get(zone.scheduleID) ?? "" } : null,
+      downlinkPolicy: null
     });
   }
+  applyDownlinkPolicies(rows, bacnet.objects ?? {});
   return rows;
+}
+
+const WITHIN_RANGE = "compareToUplinkObjectWithinRange";
+
+/**
+ * Marks the uplink rows targeted by a "compare with uplink object" downlink strategy:
+ * "ok" when the downlink value on the BMS already matches the uplink value (no downlink scheduled),
+ * "due" when it does not (a downlink will be sent). Same rules as shouldTriggerDownlink in downlink.js.
+ */
+function applyDownlinkPolicies(rows, objects) {
+  for (const [downName, object] of Object.entries(objects)) {
+    if (object.dataDirection !== "downlink" || !["compareToUplinkObject", WITHIN_RANGE].includes(object.downlinkStrategy) || !object.uplinkToCompareWith) continue;
+    const [min, max] = Array.isArray(object.range) && object.range.length >= 2 ? object.range : [0, 0];
+    for (const downRow of rows.filter((row) => row.objectName === downName)) {
+      const upRow = rows.find((row) => row.objectName === object.uplinkToCompareWith && row.deviceNum === downRow.deviceNum);
+      const up = Number(upRow?.presentValue);
+      const down = Number(downRow.presentValue);
+      if (!upRow || upRow.presentValue === "" || downRow.presentValue === "" || Number.isNaN(up) || Number.isNaN(down)) continue;
+      const respected = object.downlinkStrategy === WITHIN_RANGE ? down >= up + min && down <= up + max : down === up;
+      if (!respected) upRow.downlinkPolicy = "due";
+      else upRow.downlinkPolicy ??= "ok";
+    }
+  }
 }
 
 module.exports = { buildBmsObjectRows };

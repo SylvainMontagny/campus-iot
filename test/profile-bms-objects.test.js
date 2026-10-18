@@ -51,3 +51,22 @@ test("only the BMS objects of the profile are listed, downlink ones with their s
 test("a device that is not listed in the zone is not controlled by its schedule", () => {
   assert.ok(build("bms", [5]).every((row) => row.controlledBy === null));
 });
+
+test("uplink objects targeted by a compare strategy are marked ok or due per device", () => {
+  const def = structuredClone(definition);
+  def.bacnet.objects.setpoint.downlinkStrategy = "compareToUplinkObject";
+  def.bacnet.objects.setpoint.uplinkToCompareWith = "temperature";
+  const values = [
+    { type: "analogValue", instance: 110, name: "t1", presentValue: "20" },
+    { type: "analogValue", instance: 111, name: "s1", presentValue: "20" },
+    { type: "analogValue", instance: 120, name: "t2", presentValue: "20" },
+    { type: "analogValue", instance: 121, name: "s2", presentValue: "22" }
+  ];
+  const rows = buildBmsObjectRows({ deviceProfile: "valve", definition: def, connectionName: "bms", bmsObjects: { values, schedules: [] } });
+  const policy = Object.fromEntries(rows.map((row) => [row.name, row.downlinkPolicy]));
+  assert.deepEqual(policy, { t1: "ok", s1: null, t2: "due", s2: null });
+  def.bacnet.objects.setpoint.downlinkStrategy = "compareToUplinkObjectWithinRange";
+  def.bacnet.objects.setpoint.range = [0, 2];
+  const ranged = buildBmsObjectRows({ deviceProfile: "valve", definition: def, connectionName: "bms", bmsObjects: { values, schedules: [] } });
+  assert.equal(ranged.find((row) => row.name === "t2").downlinkPolicy, "ok");
+});

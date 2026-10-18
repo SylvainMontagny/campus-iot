@@ -518,7 +518,8 @@ function previousValuesHtml() {
   }).join("");
   const sameValue = (a, b) => (a !== "" && b !== "" && !Number.isNaN(Number(a)) && !Number.isNaN(Number(b)) ? Number(a) === Number(b) : String(a) === String(b));
   const body = sorted.map((row) => {
-    const rowClass = row.direction !== "downlink" ? ""
+    const rowClass = row.direction === "uplink" ? (row.downlinkPolicy === "due" ? "pv-mismatch" : row.downlinkPolicy === "ok" ? "pv-scheduled" : "")
+      : row.direction !== "downlink" ? ""
       : !row.controlledBy ? "pv-downlink"
         : sameValue(row.controlledBy.presentValue, row.presentValue) ? "pv-scheduled" : "pv-mismatch";
     return `<tr class="${rowClass}">${PREVIOUS_VALUE_COLUMNS.map(([key]) => `<td${CENTERED_COLUMNS.has(key) ? ` class="bms-center"` : ""}>${escapeHtml(String(text(row, key) ?? ""))}</td>`).join("")}</tr>`;
