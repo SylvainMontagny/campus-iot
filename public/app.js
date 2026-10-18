@@ -496,7 +496,10 @@ function previousValuesHtml() {
     return `<th><button class="bms-sort${sort?.key === key ? " is-active" : ""}" type="button" data-action="sort-previous-values" data-key="${key}" title="Sort by ${label.toLowerCase()}">${label}<span aria-hidden="true">${arrow}</span></button></th>`;
   }).join("");
   const body = sorted.map((row) => {
-    const rowClass = row.direction === "downlink" ? (row.controlledBy ? "pv-scheduled" : "pv-downlink") : "";
+    const sameValue = (a, b) => (a !== "" && b !== "" && !Number.isNaN(Number(a)) && !Number.isNaN(Number(b)) ? Number(a) === Number(b) : String(a) === String(b));
+    const rowClass = row.direction !== "downlink" ? ""
+      : !row.controlledBy ? "pv-downlink"
+        : sameValue(row.controlledBy.presentValue, row.presentValue) ? "pv-scheduled" : "pv-mismatch";
     return `<tr class="${rowClass}">${PREVIOUS_VALUE_COLUMNS.map(([key]) => `<td>${escapeHtml(String(text(row, key) ?? ""))}</td>`).join("")}</tr>`;
   }).join("");
   return `${heading}<div class="bms-objects-table-wrap"><table class="bms-objects-table"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>`;

@@ -322,6 +322,7 @@ button { cursor: pointer; }
 .previous-values h3 { margin: 0 0 8px; font-size: 1rem; }
 .bms-objects-table tr.pv-downlink td { color: #c0392b; }
 .bms-objects-table tr.pv-scheduled td { color: #1f8a4c; }
+.bms-objects-table tr.pv-mismatch td { color: #e67e22; }
 .bms-sort { display: inline-flex; align-items: center; gap: 4px; padding: 0; font: inherit; font-weight: 700; color: inherit; background: none; border: 0; cursor: pointer; }
 .bms-sort span { font-size: .75em; opacity: .45; }
 .bms-sort.is-active span, .bms-sort:hover span { opacity: 1; }

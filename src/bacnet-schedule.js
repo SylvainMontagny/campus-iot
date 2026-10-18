@@ -100,16 +100,32 @@ function createNativeScheduleDriver(connection, { client, log = () => {}, device
   }
 
   // The schedule drives the AVToBindName (downlink) objects of its zone devices through its list of object property references.
-  function writeReferences(zone, profiles) {
-    const references = boundObjects(zone, profiles).map((instance) => ({
+  function referencesFor(zone, profiles) {
+    return boundObjects(zone, profiles).map((instance) => ({
       type: ApplicationTag.DEVICE_OBJECT_PROPERTY_REFERENCE,
       value: { objectId: analogValueId(instance), propertyId: PropertyIdentifier.PRESENT_VALUE }
     }));
-    return write(scheduleId(zone.scheduleID), PropertyIdentifier.LIST_OF_OBJECT_PROPERTY_REFERENCES, references);
+  }
+
+  function writeReferences(zone, profiles) {
+    return write(scheduleId(zone.scheduleID), PropertyIdentifier.LIST_OF_OBJECT_PROPERTY_REFERENCES, referencesFor(zone, profiles));
   }
 
   async function setupBindings(zones, conf, profiles = deviceProfiles) {
-    await settleAll("Schedule references", zones.map((zone) => () => writeReferences(zone, profiles)));
+    const bindings = zones.map((zone) => ({
+      zone,
+      references: referencesFor(zone, profiles)
+    }));
+    const results = await Promise.allSettled(bindings.map(({ zone, references }) => Promise.resolve().then(() => {
+      return write(scheduleId(zone.scheduleID), PropertyIdentifier.LIST_OF_OBJECT_PROPERTY_REFERENCES, references);
+    })));
+    results.forEach((result, index) => {
+      if (result.status === "rejected") {
+        const { zone, references } = bindings[index];
+        const instances = references.map((reference) => reference.value.objectId.instance);
+        log("error", `Schedule references failed for ${zone.scheduleName} (schedule instance ${zone.scheduleID}; analogValue instances ${instances.join(", ") || "none"}): ${describeError(result.reason)}`);
+      }
+    });
   }
 
   // BACnet controllers reject an empty EXCEPTION_SCHEDULE (INVALID_TAG), so "no special event" is one eventless entry on a past date.

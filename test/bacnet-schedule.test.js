@@ -142,3 +142,24 @@ test("each schedule references the AVToBindName objects of its zone devices", as
     { type: ObjectType.ANALOG_VALUE, instance: 5312 }, { type: ObjectType.ANALOG_VALUE, instance: 5412 }
   ]);
 });
+
+test("a rejected schedule reference write logs the zone, targets, and BACnet error", async () => {
+  const logs = [];
+  const client = {
+    writeProperty: async (_address, _id, property) => {
+      if (property === PropertyIdentifier.LIST_OF_OBJECT_PROPERTY_REFERENCES) {
+        throw new Error("BacnetError - Class:2 - Code:40");
+      }
+    }
+  };
+  const driver = createNativeScheduleDriver({ ipAddress: "10.0.0.9" }, { client, log: (...entry) => logs.push(entry) });
+  const deviceProfiles = { valve: { bacnet: { instanceRangeAV: 100, offsetAV: 5000, objects: { setpoint: { instanceNum: 12 } } } } };
+  const zone = { scheduleID: 3, scheduleName: "8D-119", devices: { valve: { deviceNums: [3, 4], AVToBindName: "setpoint" } } };
+
+  await driver.setupBindings([zone], {}, deviceProfiles);
+
+  assert.equal(logs.length, 1);
+  assert.equal(logs[0][0], "error");
+  assert.match(logs[0][1], /8D-119 \(schedule instance 3; analogValue instances 5312, 5412\)/);
+  assert.match(logs[0][1], /BACnet error PROPERTY\(2\) \/ WRITE_ACCESS_DENIED\(40\)/);
+});
