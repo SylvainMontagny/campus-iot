@@ -1,10 +1,12 @@
 const mqtt = require("mqtt");
+const net = require("node:net");
 const { processRestApiBacnet } = require("./restapi-bacnet");
 const { processBacnet } = require("./bacnet-native");
 const { prepareDownlink, protocolLabel } = require("./downlink");
 
 const MAX_LOG_ENTRIES = 300;
 const RECONNECT_PERIOD_MS = 20000;
+const SECURE_MQTT_PORTS = [8883, 8884];
 // Our own downlink publications come back when subscribed to a wildcard topic.
 const DOWNLINK_TOPIC = /(\/down\/(push|replace)|\/command\/down|\/downlink)$/;
 const NETWORKS = {
@@ -237,14 +239,17 @@ function createMqttService({ getDeviceProfiles, onLog = () => {}, clientFactory 
 
     if (client) disconnect();
     settings = { server, port, topic };
+    // Brokers listening on the standard MQTT-over-TLS ports require an encrypted connection.
+    const secure = SECURE_MQTT_PORTS.includes(port);
     state = "connecting";
-    addLog("info", `Connecting to MQTT broker ${server}:${port}.`);
+    addLog("info", `Connecting to MQTT broker ${server}:${port}${secure ? " (TLS)" : ""}.`);
 
     try {
       const activeClient = clientFactory({
         host: server,
         port,
-        protocol: "mqtt",
+        protocol: secure ? "mqtts" : "mqtt",
+        servername: secure && !net.isIP(server) ? server : undefined,
         username: String(options.username || ""),
         password: String(options.password || ""),
         reconnectPeriod: RECONNECT_PERIOD_MS,

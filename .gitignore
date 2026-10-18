@@ -25,17 +25,4 @@ npm-debug.log*
 coverage/
 
 # Local application data may contain credentials or private device details
-data/config.json
-data/config.json.tmp
-data/bms-connections.json
-data/bms-connections.json.tmp
-data/mqtt-connections.json
-data/mqtt-connections.json.tmp
-data/device-profiles.json
-data/device-profiles.json.tmp
-data/deviceProfiles.json
-data/deviceProfiles.json.tmp
-data/deviceList.json
-data/deviceList.json.tmp
-data/zones-schedules.json
-data/zones-schedules.json.tmp
+data/
