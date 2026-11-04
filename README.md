@@ -1,54 +1,242 @@
-﻿# LoRaBAC configuration service
+﻿# Campus-IoT, an open-source platform for Smart Buidling management
 
-An Express application that replaces the LoRaBAC Node-RED editor with a browser-based device-profile configuration editor and MQTT uplink listener. It edits global connection settings and Node-RED-compatible device and BACnet object configuration, validates, saves, imports, and exports the JSON, and maps incoming MQTT uplinks into per-device output objects.
+Campus-IoT is a web application that has 3 main features :
+1. it exposes your **LoRaWAN end-devices** payload on your **BACnet BMS**. Why is it useful ? Please refer to my [webinar on this topic](https://youtu.be/LRaT3Jc7xrs?si=O3qf1RE9En45UXKb).
+2. It controls the **LoRaWAN actuators** with any **ical agenda**. Because it's important to control your LoRaWAN actuator's setpoints (thermostatic valves, HVAC)  according the room occupency. 
+3. It configures any **BACnet schedule object** on any **BACnet BMS** from an **ical agenda**. Because too many BACnet controllers have a static weekly schedule, we want to provide an easy way to directely write the BACnet schedule object.  
 
-## Requirements
 
-- Node.js 20 or newer
-- npm
+## **1. Overview**
+### **1.1. What is Campus IoT?**
+Campus IoT acts as a bridge between **LoRaWAN end-devices** and **BACnet controllers**, making it ideal for **smart building applications**.
 
-## Run
+![LoRaBAC](images/lorawan-to-bacnet.png)
+
+Campus-IoT has been tested with many hardwares and many different infrastructures. 
+
+### **1.2. Key Features**
+
+#### **Key Features for the LoRaWAN to BACnet interface**
+
+- **Universal Compatibility:**
+  - [x] Works with **all LoRaWAN end-devices** and **gateways**.
+  - [x] Supports **ChirpStack**, **Actility**, and **The Things Stack** (The Things Network / The Things Industries) Network Servers.
+  - [x] Integrates with **all BACnet controllers** using native BACnet protocols (and/or Rest API when using **Distech-Controls controllers**).
+
+- **Bidirectional Communication:**
+  - [x] **Uplink:** Writes LoRaWAN payloads to specific BACnet objects.
+  - [x] **Downlink:** Writes BACnet objects to specific LoRaWAN payload.
+
+- **Proven Use Cases:**
+  - [x] Thermostatic valves
+  - [x] Temperature and humidity sensors
+  - [x] Air quality sensors
+  - [x] Current monitoring sensors
+  - [x] Pilot wired electric heater controller
+
+#### **Key Features for controlling LoRaWAN actuators with ical agenda**
+  - [x] Dynamically creates schedule object on the BMS as well as special events according to the ical agenda.
+  - [x] Works with any URL providing an ical agenda 
+
+#### **Key Features configuring BACnet schedule object from ical agenda**
+  - [x] Write special event on a remote BACnet schedule event from an ical agenda.
+
+for the last 2 features, working with ical agenda is **Highly configurable:**
+  - [x] **Schedule output:** configure the value when the zone is occupied/unoccupied.
+  - [x] **Anticipation and inertia:** when you need to heat a room before its occupation.
+  - [x] **Merge:** if you want to provide a merged time slot of all daily event.
+  - [x] **Discard:** if you want to discard specific event in the ical agenda.
+  - [x] **Weekly event:** if you want to add a weekly event configuration on top of the special event.
+
+
+### **1.3. What Makes Campus IoT Unique?**
+Campus IoT is designed with a **different approach** compared to other LoRaWAN-BACnet interfaces. Here’s why it stands out:
+
+1. **BACnet Client Architecture:**
+   - Unlike most interfaces that act as **BACnet servers**, LoRaBAC operates as a **BACnet client**. It only interacts with the controller when a LoRaWAN payload is received, reducing unnecessary traffic.
+
+2. **Flexible Deployment:**
+   - LoRaBAC can be installed **anywhere**:
+     - On the **LoRaWAN Gateway**
+     - On any industrial PC within the **local network**
+     - Directly on the **BMS**
+
+3. **Open Source and Free:**
+   - LoRaBAC is **free to use** and **open-source** under the **MIT License**, offering full transparency and customization.
+
+### **1.4. Quick Start with Docker:**
+A pre-configured **Node-RED Docker image** is available on [Docker Hub](https://hub.docker.com/r/montagny/node-red/tags). It includes all required packages for easy deployment.
+
+
+### **1.5. Support**
+To get support on LoRaWAN or LoRaBAC, please refers to the following ressources, or [reach us](https://www.univ-smb.fr/lorawan/en/contact/) out.
+
+:tv: Webinar Replay: [LoRaWAN and BACnet interfaces for Smart Building]()
+
+:notebook: Free ebook:[LoRaWAN for beginers books](https://www.univ-smb.fr/lorawan/en/free-book/)
+
+:tv: E-learning platform: [LoRaWAN for beginers videos](https://www.udemy.com/course/lora-lorawan-internet-of-things/?referralCode=21DED0F1021F4E261955)
+
+:tv: E-learning platform for Advanced users: [LoRaWAN for Advanced users videos](https://www.udemy.com/course/lorawan-for-advanced-users/?referralCode=BA4A670560916E1AED77)
+
+:bulb: 2 days training sessions: [LoRaWAN and IoT Training](https://www.univ-smb.fr/lorawan/avada_portfolio/formation-distanciel/)
+
+
+
+## **2. Prerequisites**
+### **2.1. LoRaWAN End-Device**
+To use Campus IoT you will need:
+- A LoRaWAN **Network Server** (ChirpStack, TTN or Actility).
+- The device **LoRaWAN payload decoder** (for uplink).
+- The device **LoRaWAN payload encoder** (for downlink, if needed).
+
+Payload decoder and encoders should be provided by your device manufacturer.
+
+Campus IoT handles automatic assignement between the LoRaWAN payload and the BACnet object. This assignement is based on the device number NUM given in the **LoRaWAN device name** on the LNS xxxxx-NUM (e.g., mclimate-vicki-1, micropelt-mlr003-3, nexelec-flow-54...).
+
+### **2.2. MQTT Broker**
+Campus IoT relies on an **MQTT broker** for communication. You can use:
+- The built-in MQTT broker provided by **ChirpStack**, **Actility**, or **The Things Stack**.
+- Your own **custom MQTT broker**.
+
+### **2.3. BACnet controller**
+Campus IoT writes to and read from an existing BACnet controller. If you don't have one, we provide a fully features BACnet server that complies with all BACnet service and with no limitation on number of objets.
+
+
+## **3. Getting Started**
+Campus IoT needs to run on the network host to be able to use the "who is" command for network discovery.
+
+1. Run the following command on any hardware where docker is installed:
+```powershell
+docker run -d \
+  --name campus-iot \
+  --network host \
+  --restart unless-stopped \
+  montagny/campus-iot:latest
+```
+2. Open <http://localhost:3000>
+
+Alternativelly, you can directly use this application using npm :
 
 ```powershell
 npm install
 npm start
 ```
 
-Open <http://localhost:3000>. Use `npm run dev` during development and `npm test` to run the built-in Node.js test suite. Set `PORT` to change the HTTP port.
 
-The configuration editor persists device profiles in `data/device-profiles.json`; profile names are the keys at the file root and there is no `globalConfig` wrapper. Each device profile stores its selected BMS connection name as `controller.connectionName` alongside its controller and LoRaWAN settings. Assigned BMS connections are reconstructed from profile settings, while unassigned connections are retained in `data/bms-connections.json`. MQTT settings and zone schedules are stored in `data/mqtt-connections.json` and `data/zones-schedules.json`. Local data files are git-ignored because they may contain network credentials. On startup, the application also reads legacy `data/deviceProfiles.json` and `data/deviceList.json` files; subsequent saves use `device-profiles.json`. It migrates `identity.deviceType` to `identity.deviceProfile` and does not import the older `data/config.json` format. Export downloads all four JSON files. Import accepts one or more of these files in a single selection; select all four to restore a complete configuration, then use **Save configuration** to persist it.
+## **4. Campus IoT configuration**
+The complete Campus IoT configuration is done is four steps :
+1. MQTT connection
+2. BMS connections
+3. LoRaWAN To BACnet configuration
+4. Zones & Schedules configuration
 
-Use the **MQTT connection** section in the navigation rail to choose the **LoRaWAN Network server** (first field) and enter the broker server, port, login, password, and subscription topic. Choosing a network server prefills empty (or still-prefilled) fields: port 1883 always; for **The Things Stack (TTN)** server `eu1.cloud.thethings.network`, login `YOUR_APPLICATION_ID@ttn` and topic `v3/YOUR_APPLICATION_ID@ttn/devices/+/up`; for **The Things Stack (TTS)** the same without `@ttn`; for **ChirpStack** topic `application/YOUR_APPLICATION_ID/device/+/event/up` (plus its gRPC fields). The selected network server is stored in `data/mqtt-connections.json` and written to `lorawan.networkServer` of every device profile on save; TTN is processed exactly like TTS. Existing installations take the value from their device profiles until it is saved with the MQTT connection. The server subscribes with MQTT.js; the header indicator turns green after the broker connection and topic subscription both succeed. Incoming The Things Stack, ChirpStack, and Actility uplinks are mapped using `data/device-profiles.json`; the MQTT message log displays legacy-compatible packet errors and each resulting device object.
+In this section, we will see only the first two parts : "MQTT connections" and "BMS connections". "LoRaWAN To BACnet" and "Zones & Schedules" are optionnal and depends on your use case.
 
-**Zones & Schedules** has two global configurations, stored in `data/zones-schedules.json` as `icalToScheduleConf` and `scheduleEventsConf`. Each zone chooses one with its `configuration` field (default `icalToScheduleConf`):
 
-- **Manage LoRaWAN devices from ical calendar** (`icalToScheduleConf`): the application creates the BACnet schedules and scheduleAV objects of the zones, binds the scheduleAV values to the LoRaWAN devices, then keeps the schedules fed from the iCal calendars.
-- **Add events to an existing BACnet schedule object** (`scheduleEventsConf`): the zone gives the `scheduleID` of an existing BACnet schedule object; the application only updates its events from the iCal calendar (no schedule, scheduleAV, binding or instance-range handling). Zones saved before this option existed use the first configuration.
+### **4.1 Import/Export configuration**
+If you have a ready to use configuration, use the "Import CONF" button. Your configuration will automatically apply after saving.
 
-Every BMS action of Zones & Schedules follows the **BMS protocol** of the zone's BMS connection. With **REST API BACnet** the Distech REST API is used. With **BACnet** the schedules are managed natively with bacnet-js (`src/bacnet-schedule.js`): schedule objects are created and deleted with the BACnet object services (no scheduleAV objects and no scheduleAV update loop, unlike the REST API), events are written to `EXCEPTION_SCHEDULE`, `WEEKLY_SCHEDULE` and `SCHEDULE_DEFAULT`, and each schedule gets a `List_Of_Object_Property_References` pointing to the `AVToBindName` (downlink) objects of the devices of its zone, so the controller applies the schedule output to them. A rejected reference write is reported in the message log with the zone name, schedule instance, target analog-value instances, and BACnet error.
 
-For LoRaWAN device processing, both **REST API BACnet** and native **BACnet** create configured objects reported as missing by the controller, then initialize them with the current uplink values and the configured (or previously saved) downlink values. Native BACnet recognizes the standard unknown-object error by its BACnet error class/code as well as controller error text. It sends one create request per object, awaits its answer, and does not retry a rejected or timed-out request. The name and the initial value go in that single request, with an explicit array index and priority because the library otherwise encodes them as `0`, which controllers reject.
+### **4.2 MQTT connections**
+Campus IoT embeds a MQTT client (pub/sub). You need to provide:
+- MQTT broker address/port
+- Login
+- Password
+- Topic
 
-## HTTP API
+MQTT connection settings are stored in `/data/mqtt-connections.json`
 
-- `GET /api/health` returns service status.
-- `GET /api/config` returns the device profiles and reconstructs `connections` and `deviceConnections` from its devices for the editor.
-- `POST /api/config/validate` validates a configuration and returns `{ "valid": true, "errors": [] }`.
-- `PUT /api/config` validates the device profiles and persists only `data/device-profiles.json`.
-- `POST /api/zones/test-ical` fetches the supplied zone URL and verifies that it contains a valid iCalendar feed.
-- `POST /api/mqtt/connect` starts an MQTT.js broker connection and subscribes to the requested topic.
-- `POST /api/mqtt/disconnect` closes the active broker connection.
-- `GET /api/mqtt/status` reports the current MQTT connection state.
-- `GET /api/mqtt/logs?after=<id>` returns log entries newer than the supplied entry ID.
+### **4.3 BMS connections**
+Campus IoT is a BACnet client that writes to and read from BMS. We need to configure the BMS connection and protocol used. A who-is network discovery is available to easy the configuration process. We need to provide:
+- A connection name for this BMS
+- The BMS Ip Address on the local network
+- The procole used (default is BACnet, but Respt API is available on some BMS)
 
-The `deviceProfiles` map uses the same device JSON structure as the Node-RED configuration. Uplink/downlink direction and downlink settings remain available as configuration data; the MQTT listener consumes uplinks and logs mapped device objects but does not publish downlinks.
+Press the Test button to check the connection then save your configuration.
 
-## Project layout
+Use the "Get all Object" button to read all BACnet object on the BMS.
 
-```text
-server.js                 Express API and local config persistence
-src/config-validation.js  Configuration rules
-src/default-config.js     Initial configuration
-public/                   Browser editor
-test/                     Node.js built-in tests
-```
+BMS connections settings are stored in `/data/bms-connections.json`
+
+## **5. LoRaWAN To BACnet configuration**
+The LoRaWAN to BACnet process is based on a device profile list. For example, if your use case has 200 thermostatic valves and 300  temperature sensors, then you need to configure 2 device profiles, one for the thermostatic valves and one for temperature sensors. 
+
+LoRaWAN to BACnet configuration settings are stored in `/data/device-profiles.json`
+
+
+#### **5.1. Device profile configuration:**
+The device profile configuration has two steps. Most configuration are obvious. Please click on the tooltip icon (?) to get more information on a specific field.
+  1. Device profile configuration 
+  2. Mapping between LoRaWAN payload and BACnet objects. 
+
+#### **Instance Num configuration**
+Campus IoT handles automatic assignement (manual assignement is optionnal) between the LoRaWAN payload and the BACnet object. This assignement is based on the device number NUM given in the LoRaWAN device name (xxxxx-NUM).
+* **First AV instance number**: This is where all BACnet Analog Value will be written for this device profile.
+* **First BV instance number**: This is where all BACnet Binary Value will be written for this device profile.
+* **Number of AV for each device**: This is the range allocated for the Analog Value for each device of this device profile.
+* **Number of BV for each device**: This is the range allocated for the Binary Value for each device of this device profile.
+
+So for example, the device **xxxxx-NUM** will write/read BACnet object from :
+**First AV instance number** + (**Number of AV for each device** * **NUM**).
+
+Where **NUM** is the device number. 
+
+#### **Uplink or downlink**
+The correspondance between LoRaWAN payload and BACnet objects has two possible "Directions": 
+* **Uplink** means a mapping between a LoRaWAN payload and BACnet objects.
+* **Downlink** means a mapping between a BACnet object and a LoRaWAN payload.
+
+#### **Downlink strategies**
+Please refer to the Appendix to know more about the downlink strategies proposed.
+
+
+## **5. Zones & Schedules configuration**
+Depending on your use case, there are two ways to configure this section
+1. A agenda is written in a schedule BACnet object
+2. A agenda is written in a schedule BACnet object AND it controls the downlink object of a LoRaWAN end-device.
+
+The first use case (1) is when you have a LoRaWAN actuator (e.g : a LoRaWAN thermostatic valve). In that case, Campus IoT run the following process:
+- dynamically creates a BACnet schedule object
+- fills in this schedule object with special event based on a ical Agenda
+- links the output of this schedule to the downlink payload that has to be sent to the LoRaWAN end-device.
+- applies the downlink strategy to request downlink on the LoRaWAN device.
+
+The second use case (2) is when you already have a BACnet schedule object on a BMS, and you want to fill it in with events from an ical agenda. The agenda can be a room occupency or a building accupency, depending on what the BMS controls. In that case, Campus IoT run the following process:
+- fills in this schedule object with special event based on a ical Agenda (BACnet schedule object must be present on the BMS).
+
+## APPENDIX A: **Downlink strategies**
+Interfacing uplink LoRaWAN payload with BACNet object is quite simple, however it's more challenging to send downlink from BACnet object to LoRaWAN end-device as we need to define a strategy. The strategy describes when and how the downlink message should be sent.
+
+Right now, in the LoRaBAC application, there are four dowlink strategies that can cover almost all use cases.  
+
+### A.1. The **Compare with the following BACnet uplink object** strategy
+On each uplink, the BACnet object value is compared to the BACnet object configured. 
+* If the values are different, the object value is sent to the device with a downlink message.
+* If the values are the same, no action is taken.
+
+### A.2. The **Compare with the following BACnet uplink object within range** strategy
+On each uplink, the BACnet object value is compared to the BACnet object configured. 
+* If the values are equal within the margin (range), than no action is taken.
+* If the values are different and outside the margin (range), than a downlink is scheduled.
+
+### A.3. The **On change on BMS** strategy
+On each uplink (or polling time for class C end-devices), the BACnet object value is compared to its previous value (from the previous downlink). 
+* If the values are different, a downlink is scheduled.
+* If the values are the same, no action is taken.
+
+### A.4. The **On change on BMS within range** strategy
+On each uplink (or polling time for class C end-devices), the BACnet object value is compared to its previous value (from the previous downlink).
+* If the values are equal within the margin (range), than no action is taken.
+* If the values are different and outside the margin (range), than a downlink is scheduled.
+
+
+## APPENDIX B: **Specific information about the Network Server**
+Depending on the LoRaWAN Network Server, there might be some specific configurations.
+
+### B.1. Details for actility (ThingPark):
+When using downlink, ThingPark needs information to retrieve the payload encoder. In ThingPark, the payload decoder are called drivers and have 3 identifiers : pID, mID and ver.
+
+### B.2. Details for ChirpStack:
+When using downlink as well as the "Flush Downlink Queue" capability, LoRaBAC uses the ChirpStack's grpc API to flush the queue. Therefore, we need to provide the API Key generated by ChirpStack.  
+
