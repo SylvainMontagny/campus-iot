@@ -1,6 +1,6 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { listBmsObjects } = require("../src/bms-objects");
+const { listBmsObjects } = require("../src/bms-connections/objects");
 
 const REST = { ipAddress: "10.0.0.1", protocol: "restAPIBacnet", model: "distechControlsV2" };
 

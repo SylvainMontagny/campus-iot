@@ -1,6 +1,7 @@
 ﻿const axios = require("axios");
 const https = require("node:https");
-const { protocolLabel } = require("./downlink");
+const { logDeviceObject } = require("../../diagnostics");
+const { protocolLabel } = require("../../../lorawan-to-bacnet/downlink");
 
 const DEFAULT_TIMEOUT_MS = 5000;
 const DISTECH_BASE = "/api/rest/v2";
@@ -181,11 +182,6 @@ async function runStream(device, dataDirection, ctx) {
 }
 
 // MQTT diagnostics: records a snapshot of a device after its REST BACnet operation.
-function logDeviceObject(log, device, dataDirection) {
-  const label = dataDirection === "uplink" ? "uplink" : "downlink";
-  log("output", `Device object after ${label} process:\n${JSON.stringify(device, null, 2)}`, structuredClone(device), dataDirection === "uplink" ? "deviceUplink" : "deviceDownlink");
-}
-
 /**
  * Distech REST adapter: writes uplink values, then reads downlink values into the mapped device objects.
  */
@@ -215,4 +211,4 @@ async function processRestApiBacnet(device, { httpClient = defaultHttpClient, pr
   return { handled: true, ok: true };
 }
 
-module.exports = { processRestApiBacnet, logDeviceObject, buildReadWriteRequest, buildCreateRequest, buildWriteValuesRequest };
+module.exports = { processRestApiBacnet, buildReadWriteRequest, buildCreateRequest, buildWriteValuesRequest };

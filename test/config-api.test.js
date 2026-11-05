@@ -1,7 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const { app } = require("../server");
-const { createDefaultConfig } = require("../src/default-config");
+const { createDefaultConfig } = require("../src/config/defaults");
 
 test("configuration validation includes zones and schedules", async (context) => {
   const server = app.listen(0);

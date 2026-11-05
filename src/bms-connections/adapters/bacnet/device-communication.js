@@ -1,6 +1,6 @@
 ﻿const { default: Bacnet, ApplicationTag, ErrorClass, ErrorCode, ObjectType, PropertyIdentifier, getEnumName, ASN1_ARRAY_ALL: ARRAY_ALL, ASN1_NO_PRIORITY: NO_PRIORITY } = require("@bacnet-js/client");
-const { logDeviceObject } = require("./restapi-bacnet");
-const { protocolLabel } = require("./downlink");
+const { logDeviceObject } = require("../../diagnostics");
+const { protocolLabel } = require("../../../lorawan-to-bacnet/downlink");
 
 const DEFAULT_TIMEOUT_MS = 6000;
 const BACNET_PORT = 47808;

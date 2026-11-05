@@ -1,7 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { buildBmsObjectRows } = require("../src/profile-bms-objects");
-const { createDefaultZonesSchedules } = require("../src/zones-config");
+const { buildBmsObjectRows } = require("../src/bms-connections/profile-objects");
+const { createDefaultZonesSchedules } = require("../src/zones-schedules/configuration");
 
 const definition = {
   identity: { maxDevNum: 5 },

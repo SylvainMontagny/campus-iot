@@ -1,4 +1,4 @@
-const { resolveZones, ICAL_TO_SCHEDULE } = require("./zones-config");
+const { resolveZones, ICAL_TO_SCHEDULE } = require("../zones-schedules/configuration");
 
 const TYPE_NAMES = { 2: "analogValue", 5: "binaryValue", analogValue: "analogValue", binaryValue: "binaryValue" };
 

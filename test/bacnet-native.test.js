@@ -1,7 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const { ApplicationTag, PropertyIdentifier, ASN1_ARRAY_ALL, ASN1_NO_PRIORITY } = require("@bacnet-js/client");
-const { processBacnet, isUnknownObject } = require("../src/bacnet-native");
+const { processBacnet, isUnknownObject } = require("../src/bms-connections/adapters/bacnet/device-communication");
 
 function makeDevice() {
   return {

@@ -1,7 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const { ObjectType, PropertyIdentifier, ASN1_ARRAY_ALL, ASN1_NO_PRIORITY } = require("@bacnet-js/client");
-const { createNativeScheduleDriver, toWeeklySchedule, toExceptionSchedule } = require("../src/bacnet-schedule");
+const { createNativeScheduleDriver, toWeeklySchedule, toExceptionSchedule } = require("../src/bms-connections/adapters/bacnet/schedules");
 
 const special = {
   1: {

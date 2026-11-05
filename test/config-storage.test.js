@@ -3,7 +3,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs/promises");
 const os = require("node:os");
 const path = require("node:path");
-const { readConfig, writeConfig, applyConnectionsToDevices } = require("../server");
+const { readConfig, writeConfig, applyConnectionsToDevices } = require("../src/config/storage");
 
 test("stores only the device profile map in device-profiles.json", async (context) => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), "lorabac-config-"));
@@ -97,7 +97,7 @@ test("ignores legacy config.json when device-profiles.json is missing", async (c
   }));
 
   const config = await readConfig(directory);
-  assert.deepEqual(config, require("../src/default-config").createDefaultConfig());
+  assert.deepEqual(config, require("../src/config/defaults").createDefaultConfig());
 });
 
 test("reads legacy deviceList.json and upgrades identity.deviceType", async (context) => {

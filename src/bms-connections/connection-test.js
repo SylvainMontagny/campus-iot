@@ -4,7 +4,7 @@ const https = require("node:https");
 const TEST_TIMEOUT_MS = 2000;
 const BACNET_PORT = 47808;
 const DISTECH_BASE = "/api/rest/v2";
-const { getClient } = require("./bacnet-native");
+const { getClient } = require("./adapters/bacnet/device-communication");
 
 const httpClient = axios.create({
   httpsAgent: new https.Agent({ rejectUnauthorized: false }),

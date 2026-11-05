@@ -1,8 +1,8 @@
 const axios = require("axios");
 const https = require("node:https");
 const ical = require("node-ical");
-const { validateZonesSchedules, resolveZones, SCHEDULE_EVENTS } = require("./zones-config");
-const { createNativeScheduleDriver } = require("./bacnet-schedule");
+const { validateZonesSchedules, resolveZones, SCHEDULE_EVENTS } = require("./configuration");
+const { createNativeScheduleDriver } = require("../bms-connections/adapters/bacnet/schedules");
 
 // Schedule polling: waits without keeping the Node.js process alive.
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms).unref());
@@ -55,6 +55,7 @@ function tzParts(date, timeZone) {
   };
 }
 
+// iCalendar conversion: unwraps calendar text properties returned as value objects.
 // iCalendar conversion: unwraps calendar text properties returned as value objects.
 const text = (value) => (value && typeof value === "object" ? String(value.val ?? "") : String(value ?? ""));
 

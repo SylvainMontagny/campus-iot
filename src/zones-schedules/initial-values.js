@@ -1,5 +1,5 @@
-const { resolveZones, ICAL_TO_SCHEDULE } = require("./zones-config");
-const { readSchedulePresentValues } = require("./bms-objects");
+const { resolveZones, ICAL_TO_SCHEDULE } = require("./configuration");
+const { readSchedulePresentValues } = require("../bms-connections/objects");
 
 /**
  * Downlink initialization: gets a zone schedule's current value for each mapped device object it controls.

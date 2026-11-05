@@ -1,7 +1,7 @@
 ﻿const test = require("node:test");
 const assert = require("node:assert/strict");
-const { createDefaultZonesSchedules, validateZonesSchedules, resolveZones, applyAdeUrlSuffix, findDuplicateIcalUrls } = require("../src/zones-config");
-const { buildSpecialEvents } = require("../src/ical-schedule");
+const { createDefaultZonesSchedules, validateZonesSchedules, resolveZones, applyAdeUrlSuffix, findDuplicateIcalUrls } = require("../src/zones-schedules/configuration");
+const { buildSpecialEvents } = require("../src/zones-schedules/service");
 
 const deviceProfiles = {
   valve: {

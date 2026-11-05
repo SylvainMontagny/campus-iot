@@ -1,7 +1,8 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const { EventEmitter } = require("node:events");
-const { createMqttService, mapIncomingPacket } = require("../src/mqtt-service");
+const { createMqttService } = require("../src/mqtt-connections/service");
+const { mapIncomingPacket } = require("../src/lorawan-to-bacnet/payload-mapping");
 
 function makeDeviceProfiles() {
   return {

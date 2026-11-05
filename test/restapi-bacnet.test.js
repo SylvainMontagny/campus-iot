@@ -1,6 +1,6 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { processRestApiBacnet } = require("../src/restapi-bacnet");
+const { processRestApiBacnet } = require("../src/bms-connections/adapters/distech-rest/device-communication");
 
 function makeDevice() {
   return {

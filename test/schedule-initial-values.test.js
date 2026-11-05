@@ -1,8 +1,8 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { scheduleInitialValues } = require("../src/schedule-initial-values");
-const { buildWriteValuesRequest } = require("../src/restapi-bacnet");
-const { createDefaultZonesSchedules } = require("../src/zones-config");
+const { scheduleInitialValues } = require("../src/zones-schedules/initial-values");
+const { buildWriteValuesRequest } = require("../src/bms-connections/adapters/distech-rest/device-communication");
+const { createDefaultZonesSchedules } = require("../src/zones-schedules/configuration");
 
 const deviceProfiles = {
   valve: { identity: { maxDevNum: 10 }, controller: { connectionName: "bms" }, bacnet: { objects: { setpoint: { dataDirection: "downlink" } } } }

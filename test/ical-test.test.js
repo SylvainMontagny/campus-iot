@@ -1,6 +1,6 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { testIcalUrl } = require("../src/ical-test");
+const { testIcalUrl } = require("../src/zones-schedules/test-ical");
 
 const calendar = [
   "BEGIN:VCALENDAR",

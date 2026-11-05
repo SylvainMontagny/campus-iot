@@ -1,6 +1,6 @@
 const { ApplicationTag, ObjectType, PropertyIdentifier, ASN1_ARRAY_ALL, ASN1_NO_PRIORITY } = require("@bacnet-js/client");
 const asn1 = require("@bacnet-js/client/dist/lib/asn1");
-const { getClient, describeError, isUnknownObject } = require("./bacnet-native");
+const { getClient, describeError, isUnknownObject } = require("./device-communication");
 
 // The client cannot encode BACnetDeviceObjectPropertyReference values (LIST_OF_OBJECT_PROPERTY_REFERENCES) when writing.
 // Local references (no device) are encoded as: [0] objectId, [1] propertyId.

@@ -1,6 +1,6 @@
 const axios = require("axios");
 const https = require("node:https");
-const { getClient, describeError } = require("./bacnet-native");
+const { getClient, describeError } = require("./adapters/bacnet/device-communication");
 
 const TIMEOUT_MS = 8000;
 const BACNET_PORT = 47808;

@@ -1,7 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const { ServicesSupported } = require("@bacnet-js/client");
-const { testBmsConnection } = require("../src/bms-test");
+const { testBmsConnection } = require("../src/bms-connections/connection-test");
 
 function servicesBitstring(...services) {
   const value = new Array(7).fill(0);

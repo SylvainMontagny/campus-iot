@@ -1,7 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { validateConfig } = require("../src/config-validation");
-const { createDefaultConfig } = require("../src/default-config");
+const { validateConfig } = require("../src/config/validation");
+const { createDefaultConfig } = require("../src/config/defaults");
 
 function configuredDevice() {
   return {

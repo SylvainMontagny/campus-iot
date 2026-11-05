@@ -1,5 +1,5 @@
 const os = require("node:os");
-const { getClient, describeError } = require("./bacnet-native");
+const { getClient, describeError } = require("./device-communication");
 
 const DISCOVERY_WINDOW_MS = 3000;
 const NAME_TIMEOUT_MS = 4000;
