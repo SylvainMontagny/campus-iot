@@ -5,13 +5,13 @@ Campus-IoT is a web application with three main features:
 
 ![LoRaBAC](images/lorabac.png)
 
-2. It controls **LoRaWAN actuators** using events from an **iCal calendar**. For example, it can send a thermostatic valve's temperature setpoint according to room occupancy.
-
-![LoRaBAC](images/ical-to-schedule.png)
-
-3. It configures **BACnet schedule objects** from an **iCal calendar**. Since many BACnet controllers have a static weekly schedule, Campus IoT provides an easy way to write events directly to a schedule object.
+2. It configures **BACnet schedule objects** from an **iCal calendar**. Since many BACnet controllers have a static weekly schedule, Campus IoT provides an easy way to write events directly to a schedule object.
 
 ![LoRaBAC](images/intermitence-bacnet.png)
+
+3. It controls **LoRaWAN actuators** using events from an **iCal calendar**. For example, it can send a thermostatic valve's temperature setpoint according to room occupancy.
+
+![LoRaBAC](images/ical-to-schedule.png)
 
 
 ## **1. Overview**
