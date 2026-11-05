@@ -149,7 +149,7 @@ The complete Campus IoT configuration is done is four steps :
 3. LoRaWAN To BACnet configuration
 4. Zones & Schedules configuration
 
-In this section, we will see only the first two parts : "MQTT connections" and "BMS connections". "LoRaWAN To BACnet" and "Zones & Schedules" are optionnal and depends on your use case.
+In this section, we will see only the first two parts : **"MQTT connections"** and **"BMS connections"**. **"LoRaWAN To BACnet"** and **"Zones & Schedules"** are optionnal and depends on your use case. See the corresponding chapter to get more information. 
 
 
 ### **4.1 Import/Export configuration**
