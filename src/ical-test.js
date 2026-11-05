@@ -4,6 +4,7 @@ const ical = require("node-ical");
 const MAX_ICAL_BYTES = 5 * 1024 * 1024;
 const TEST_TIMEOUT_MS = 10000;
 
+// Zones & Schedules UI: fetches and parses a candidate iCalendar URL before it is saved.
 async function testIcalUrl(url, { client = axios, timeout = TEST_TIMEOUT_MS } = {}) {
   if (typeof url !== "string" || !url.trim()) throw new Error("iCal URL is required");
 

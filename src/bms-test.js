@@ -13,11 +13,12 @@ const httpClient = axios.create({
   validateStatus: () => true
 });
 
+// BMS connection testing: builds the HTTP Basic authorization header for REST controllers.
 function basicAuthorization(connection) {
   return `Basic ${Buffer.from(`${connection.bacnetLogin ?? ""}:${connection.bacnetPassword ?? ""}`).toString("base64")}`;
 }
 
-// Any HTTP answer proves the server is reachable, except authentication failures.
+// BMS connection testing: verifies the Distech endpoint; any HTTP answer proves reachability except authentication failures.
 async function testRestApiBacnet(connection, { client = httpClient, timeout = TEST_TIMEOUT_MS } = {}) {
   if (connection.model !== "distechControlsV2") throw new Error(`Unknown controller model: ${connection.model}`);
   let response;
@@ -38,13 +39,13 @@ async function testRestApiBacnet(connection, { client = httpClient, timeout = TE
   return `BMS connected (HTTP ${response.status})`;
 }
 
-// The bitstring bytes of the client hold service n at bit (n % 8), least significant bit first.
+// Native BACnet connection testing: checks service n at bit (n % 8), least-significant bit first, in ProtocolServicesSupported.
 function isServiceSupported(bitstring, service) {
   const byte = bitstring?.value?.[service >> 3];
   return byte !== undefined && (byte & (1 << (service & 7))) !== 0;
 }
 
-// Returns a warning when the supported services cannot be read or lack Create/Delete Object; the connection itself is already proven.
+// Native BACnet connection testing: warns if CreateObject/DeleteObject are unavailable after reachability is proven.
 async function checkSupportedServices(client, address, { ObjectType, PropertyIdentifier, ServicesSupported }) {
   try {
     const read = await client.readProperty(address, { type: ObjectType.DEVICE, instance: 4194303 }, PropertyIdentifier.PROTOCOL_SERVICES_SUPPORTED);
@@ -60,7 +61,7 @@ async function checkSupportedServices(client, address, { ObjectType, PropertyIde
   }
 }
 
-// A BACnet error or abort is still an answer from the device; only silence is a failure.
+// Native BACnet connection testing: treats protocol errors as responses and reports failure only when the device is silent.
 async function testBacnet(connection, { createClient, timeout = TEST_TIMEOUT_MS } = {}) {
   const bacnetLib = require("@bacnet-js/client");
   const { ObjectType, PropertyIdentifier } = bacnetLib;
@@ -97,6 +98,7 @@ async function testBacnet(connection, { createClient, timeout = TEST_TIMEOUT_MS 
   }
 }
 
+// BMS connection UI: dispatches the connection test to the selected native BACnet or REST adapter.
 async function testBmsConnection(connection, options = {}) {
   if (!connection?.ipAddress) throw new Error("BMS IP address is required");
   if (connection.protocol === "restAPIBacnet") return testRestApiBacnet(connection, options.rest);

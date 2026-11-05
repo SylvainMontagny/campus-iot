@@ -7,6 +7,7 @@ const BACNET_PORT = 47808;
 
 let sharedClient = null;
 
+// Native BACnet adapter: returns the shared UDP client used for controller reads, writes, and discovery.
 function getClient(timeout) {
   if (!sharedClient) {
     const client = new Bacnet({ apduTimeout: timeout });
@@ -20,14 +21,17 @@ function getClient(timeout) {
   return sharedClient;
 }
 
+// Native BACnet adapter: formats a device profile's BMS address for the BACnet client.
 function controllerAddress(device) {
   return { address: `${device.controller.ipAddress}:${BACNET_PORT}` };
 }
 
+// Native BACnet adapter: converts a configured BACnet object into the library's object identifier shape.
 function objectId(object) {
   return { type: object.objectType, instance: object.instanceNum };
 }
 
+// Native BACnet adapter: encodes a mapped value using the BACnet application tag for its object type.
 function toAppData(object) {
   const value = Number(object.value);
   return object.objectType === ObjectType.ANALOG_VALUE
@@ -35,10 +39,12 @@ function toAppData(object) {
     : { type: ApplicationTag.ENUMERATED, value };
 }
 
+// Native BACnet adapter: selects the configured objects for one uplink or downlink operation.
 function objectsOf(device, dataDirection) {
   return Object.values(device.bacnet.objects).filter((object) => object.dataDirection === dataDirection);
 }
 
+// Native BACnet adapter: turns BACnet error class and code values into a readable diagnostic.
 function describeBacnetCode(errorClass, errorCode) {
   if (errorCode === ErrorCode.UNKNOWN_OBJECT) return "The BACnet object does not exist in the controller";
   const className = getEnumName(ErrorClass, errorClass) ?? errorClass;
@@ -46,6 +52,7 @@ function describeBacnetCode(errorClass, errorCode) {
   return `BACnet error ${className} / ${codeName}`;
 }
 
+// Native BACnet adapter: recognizes unknown-object errors across library response formats.
 function isUnknownObject(error) {
   const errorClass = error?.errorClass ?? error?.value?.errorClass;
   const errorCode = error?.errorCode ?? error?.value?.errorCode;
@@ -61,6 +68,7 @@ function isUnknownObject(error) {
   return classMatch?.[1] === "1" && codeMatch?.[1] === "31";
 }
 
+// Native BACnet adapter: formats protocol errors consistently for application logs.
 function describeError(error) {
   const message = error?.message || String(error);
   const errorClass = error?.errorClass ?? error?.value?.errorClass;
@@ -73,9 +81,10 @@ function describeError(error) {
   return match ? `${describeBacnetCode(Number(match[1]), Number(match[2]))} (${message})` : message;
 }
 
-// Creates the object with its name and initial value in a single request. The index and priority
+// Native BACnet adapter: creates an object with its name and initial value in one request. The index and priority
 // must be explicit: @bacnet-js/client encodes them as 0 when omitted, which controllers reject.
 function createObject(client, address, object, value) {
+  // Native BACnet adapter: builds a property reference with explicit array index and priority.
   const property = (id, appData) => ({ property: { id, index: ARRAY_ALL }, value: [appData], priority: NO_PRIORITY });
   return client.createObject(address, objectId(object), [
     property(PropertyIdentifier.OBJECT_NAME, { type: ApplicationTag.CHARACTER_STRING, value: object.objectName }),
@@ -83,6 +92,7 @@ function createObject(client, address, object, value) {
   ]);
 }
 
+// Native BACnet adapter: chooses a new downlink object's initial value from its controlling schedule, history, or profile.
 function downlinkValue(device, object, previousValues, initialValues = {}) {
   if (object.dataDirection !== "downlink") return object.value;
   const entry = Object.entries(device.bacnet.objects).find(([, candidate]) => candidate === object);
@@ -91,6 +101,7 @@ function downlinkValue(device, object, previousValues, initialValues = {}) {
   return (entry && initialValues[entry[0]]) ?? previous ?? object.value;
 }
 
+// Native BACnet adapter: creates missing mapped objects and initializes each before continuing.
 async function createAndWriteObjects(client, device, objects, previousValues, log, getInitialValues) {
   const address = controllerAddress(device);
   const names = objects.map((object) => object.objectName).join(", ");
@@ -112,6 +123,7 @@ async function createAndWriteObjects(client, device, objects, previousValues, lo
   return true;
 }
 
+// Native BACnet adapter: writes uplink values and creates mapped objects that the BMS does not yet have.
 async function writeUplinkObjects(client, device, previousValues, log, getInitialValues) {
   const address = controllerAddress(device);
   const objects = objectsOf(device, "uplink");
@@ -137,6 +149,7 @@ async function writeUplinkObjects(client, device, previousValues, log, getInitia
   return true;
 }
 
+// Native BACnet adapter: reads downlink values, creating missing objects once before retrying the read.
 async function readDownlinkObjects(client, device, previousValues, log, getInitialValues, created = false) {
   const objects = objectsOf(device, "downlink");
   const request = objects.map((object) => ({
@@ -144,8 +157,7 @@ async function readDownlinkObjects(client, device, previousValues, log, getIniti
     properties: [{ id: PropertyIdentifier.PRESENT_VALUE, index: ARRAY_ALL }]
   }));
 
-  // After creating the missing objects (initialised from the schedule or the default), read them again
-  // so that the downlink decision uses the values that are now on the controller.
+  // Native BACnet adapter: retries once after creating missing objects so downlink decisions use their initialized BMS values.
   const createThenRead = async (missingObjects) => {
     if (created || !(await createAndWriteObjects(client, device, missingObjects, previousValues, log, getInitialValues))) return false;
     return readDownlinkObjects(client, device, previousValues, log, getInitialValues, true);
@@ -187,7 +199,7 @@ async function readDownlinkObjects(client, device, previousValues, log, getIniti
   return ok;
 }
 
-/** Native BACnet: writes uplink objects, then reads downlink objects into device.bacnet.objects[*].value. */
+/** Native BACnet adapter: writes uplink objects, then reads downlink values into device.bacnet.objects[*].value. */
 async function processBacnet(device, { client, previousValues = {}, timeout = DEFAULT_TIMEOUT_MS, log = () => {}, getInitialValues } = {}) {
   if (device?.controller?.protocol !== "bacnet") return { handled: false };
 

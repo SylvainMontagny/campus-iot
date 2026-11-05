@@ -35,6 +35,7 @@ const scheduleService = createIcalScheduleService({ log: (level, message) => mqt
 app.use(express.json({ limit: "1mb" }));
 app.use(express.static(path.join(__dirname, "public")));
 
+// Configuration storage: loads device profiles and BMS connections, including supported legacy file formats.
 async function readConfig(directory = dataDirectory) {
   const deviceProfilesPath = path.join(directory, "device-profiles.json");
   let savedData;
@@ -86,6 +87,7 @@ async function readConfig(directory = dataDirectory) {
   return config;
 }
 
+// Configuration storage: reads and validates the BMS connection file, with fallback to its legacy name.
 async function readBmsConnections(directory = dataDirectory) {
   let savedData;
   try {
@@ -111,6 +113,7 @@ async function readBmsConnections(directory = dataDirectory) {
   return { connections, deviceConnections };
 }
 
+// Configuration storage: persists device profiles and BMS connection assignments.
 async function writeConfig(config, directory = dataDirectory) {
   const deviceProfilesPath = path.join(directory, "device-profiles.json");
   await fs.mkdir(directory, { recursive: true });
@@ -122,12 +125,14 @@ async function writeConfig(config, directory = dataDirectory) {
   });
 }
 
+// Configuration storage: writes JSON to a temporary file before replacing the saved file.
 async function writeJsonAtomically(filePath, value) {
   const temporaryPath = `${filePath}.tmp`;
   await fs.writeFile(temporaryPath, `${JSON.stringify(value, null, 2)}\n`, "utf8");
   await fs.rename(temporaryPath, filePath);
 }
 
+// Zones & Schedules storage: loads saved zones or supplies defaults for a first run.
 async function readZonesSchedules(directory = dataDirectory) {
   try {
     const stored = JSON.parse(await fs.readFile(path.join(directory, "zones-schedules.json"), "utf8"));
@@ -139,6 +144,7 @@ async function readZonesSchedules(directory = dataDirectory) {
   }
 }
 
+// Zones & Schedules storage: persists global settings, zones, and excluded-zone configuration.
 async function writeZonesSchedules(zonesSchedules, directory = dataDirectory) {
   await fs.mkdir(directory, { recursive: true });
   await writeJsonAtomically(path.join(directory, "zones-schedules.json"), {
@@ -149,6 +155,7 @@ async function writeZonesSchedules(zonesSchedules, directory = dataDirectory) {
   });
 }
 
+// Zones & Schedules startup: passes validated configuration and its BMS context to the schedule service.
 function startZonesSchedules(zonesSchedules, config) {
   return scheduleService.start({
     icalToScheduleConf: zonesSchedules.icalToScheduleConf,
@@ -161,6 +168,7 @@ function startZonesSchedules(zonesSchedules, config) {
 
 const MQTT_FIELDS = ["networkServer", "server", "port", "username", "password", "topic", "grpcApiKey", "serverAddress", "grpcPort"];
 
+// MQTT settings storage: loads saved broker settings, falling back to the legacy filename when needed.
 async function readMqttSettings(directory = dataDirectory) {
   try {
     return JSON.parse(await fs.readFile(path.join(directory, "mqtt-connections.json"), "utf8"));
@@ -175,6 +183,7 @@ async function readMqttSettings(directory = dataDirectory) {
   }
 }
 
+// MQTT settings storage: persists only the supported broker fields and the auto-connect flag.
 async function writeMqttSettings(settings, directory = dataDirectory) {
   const clean = {};
   for (const field of MQTT_FIELDS) clean[field] = String(settings?.[field] ?? "");
@@ -183,6 +192,7 @@ async function writeMqttSettings(settings, directory = dataDirectory) {
   await writeJsonAtomically(path.join(directory, "mqtt-connections.json"), clean);
 }
 
+// Configuration migration: derives a BMS connection definition from a device profile's legacy fields.
 function inferConnectionSettings(device) {
   if (!device) return null;
   const controller = device.controller || {};
@@ -195,6 +205,7 @@ function inferConnectionSettings(device) {
   };
 }
 
+// Configuration normalization: resolves profile-to-BMS assignments and applies connection protocol settings.
 function applyConnectionsToDevices(config) {
   if (!config || typeof config !== "object" || Array.isArray(config)) return config;
   const result = structuredClone(config);
@@ -242,24 +253,29 @@ function applyConnectionsToDevices(config) {
   return result;
 }
 
+// HTTP API: reports application health and the running version.
 app.get("/api/health", (_request, response) => {
   response.json({ status: "ok", version });
 });
 
+// HTTP API: returns the current MQTT broker connection status.
 app.get("/api/mqtt/status", (_request, response) => {
   response.json(mqttService.getStatus());
 });
 
+// HTTP API: returns MQTT service logs after an optional sequence number.
 app.get("/api/mqtt/logs", (request, response) => {
   const after = Number.parseInt(request.query.after, 10) || 0;
   response.json({ entries: mqttService.getLogs(after) });
 });
 
+// HTTP API: returns raw MQTT messages after an optional sequence number.
 app.get("/api/mqtt/raw", (request, response) => {
   const after = Number.parseInt(request.query.after, 10) || 0;
   response.json({ entries: mqttService.getRawMessages(after) });
 });
 
+// HTTP API: reads saved MQTT broker settings for the settings page.
 app.get("/api/mqtt/settings", async (_request, response, next) => {
   try {
     response.json(await readMqttSettings());
@@ -268,6 +284,7 @@ app.get("/api/mqtt/settings", async (_request, response, next) => {
   }
 });
 
+// HTTP API: saves MQTT broker settings submitted by the settings page.
 app.put("/api/mqtt/settings", async (request, response, next) => {
   try {
     await writeMqttSettings(request.body);
@@ -277,6 +294,7 @@ app.put("/api/mqtt/settings", async (request, response, next) => {
   }
 });
 
+// HTTP API: connects the MQTT service using the submitted broker settings.
 app.post("/api/mqtt/connect", (request, response) => {
   try {
     response.status(202).json(mqttService.connect(request.body));
@@ -285,10 +303,12 @@ app.post("/api/mqtt/connect", (request, response) => {
   }
 });
 
+// HTTP API: disconnects the MQTT service from its broker.
 app.post("/api/mqtt/disconnect", (_request, response) => {
   response.json(mqttService.disconnect());
 });
 
+// HTTP API: fetches BMS objects and maps them to the selected device profile for the editor.
 app.post("/api/device-profiles/:profile/bms-objects", async (request, response) => {
   try {
     const config = await readConfig();
@@ -305,6 +325,7 @@ app.post("/api/device-profiles/:profile/bms-objects", async (request, response) 
   }
 });
 
+// HTTP API: tests a configured native BACnet or REST BMS connection.
 app.post("/api/bms/test", async (request, response) => {
   try {
     const result = await testBmsConnection(request.body);
@@ -314,6 +335,7 @@ app.post("/api/bms/test", async (request, response) => {
   }
 });
 
+// HTTP API: lists the selected controller's supported BACnet objects.
 app.post("/api/bms/objects", async (request, response) => {
   try {
     response.json({ ok: true, ...(await listBmsObjects(request.body)) });
@@ -322,6 +344,7 @@ app.post("/api/bms/objects", async (request, response) => {
   }
 });
 
+// HTTP API: discovers BACnet devices for the BMS connection form.
 app.post("/api/bms/who-is", async (_request, response) => {
   try {
     response.json({ ok: true, devices: await discoverBmsDevices() });
@@ -330,6 +353,7 @@ app.post("/api/bms/who-is", async (_request, response) => {
   }
 });
 
+// HTTP API: deletes selected BACnet objects from the configured controller.
 app.post("/api/bms/objects/delete", async (request, response) => {
   try {
     const { connection, objects } = request.body ?? {};
@@ -339,6 +363,7 @@ app.post("/api/bms/objects/delete", async (request, response) => {
   }
 });
 
+// HTTP API: validates and previews an iCalendar URL from the zone editor.
 app.post("/api/zones/test-ical", async (request, response) => {
   try {
     response.json({ ok: true, message: await testIcalUrl(request.body?.url) });
@@ -347,6 +372,7 @@ app.post("/api/zones/test-ical", async (request, response) => {
   }
 });
 
+// HTTP API: returns device profiles, BMS connections, and Zones & Schedules configuration.
 app.get("/api/config", async (_request, response, next) => {
   try {
     response.json({ ...(await readConfig()), zonesSchedules: await readZonesSchedules() });
@@ -355,6 +381,7 @@ app.get("/api/config", async (_request, response, next) => {
   }
 });
 
+// HTTP API: validates submitted configuration without persisting it.
 app.post("/api/config/validate", (request, response) => {
   const config = applyConnectionsToDevices(request.body);
   const errors = validateConfig(config);
@@ -364,6 +391,7 @@ app.post("/api/config/validate", (request, response) => {
   response.status(errors.length ? 400 : 200).json({ valid: errors.length === 0, errors });
 });
 
+// HTTP API: validates and saves configuration, then applies changed device and schedule settings.
 app.put("/api/config", async (request, response, next) => {
   try {
     const config = applyConnectionsToDevices(request.body);
@@ -396,6 +424,7 @@ app.put("/api/config", async (request, response, next) => {
   }
 });
 
+// HTTP API error handler: returns client errors for malformed JSON and logs unexpected server failures.
 app.use((error, _request, response, _next) => {
   if (error instanceof SyntaxError && "body" in error) {
     response.status(400).json({ error: "Request body must contain valid JSON" });
@@ -406,6 +435,7 @@ app.use((error, _request, response, _next) => {
   response.status(500).json({ error: "Internal server error" });
 });
 
+// Application startup: listens for HTTP requests and restores configured MQTT and schedule services.
 if (require.main === module) {
   app.listen(port, async () => {
     console.log(`Campus IoT is available at http://localhost:${port}`);

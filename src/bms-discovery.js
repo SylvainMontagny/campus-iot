@@ -5,12 +5,15 @@ const DISCOVERY_WINDOW_MS = 3000;
 const NAME_TIMEOUT_MS = 4000;
 const BACNET_PORT = 47808;
 
+// BMS discovery UI: removes the BACnet port from a discovered address for display.
 const hostOf = (address) => String(address ?? "").replace(/:\d+$/, "");
 
+// BMS discovery: converts an IPv4 address to an unsigned integer for subnet calculation.
 const toInt = (ip) => ip.split(".").reduce((total, part) => ((total << 8) | Number(part)) >>> 0, 0);
+// BMS discovery: converts an unsigned IPv4 integer back to dotted notation.
 const toIp = (int) => [24, 16, 8, 0].map((shift) => (int >>> shift) & 255).join(".");
 
-/** Directed broadcast address of every usable IPv4 interface (the OS would otherwise pick one interface for 255.255.255.255). */
+/** BMS discovery: finds each local IPv4 subnet's directed broadcast address for BACnet Who-Is. */
 function localBroadcastAddresses(interfaces = os.networkInterfaces()) {
   const result = new Set();
   for (const entries of Object.values(interfaces)) {
@@ -22,7 +25,7 @@ function localBroadcastAddresses(interfaces = os.networkInterfaces()) {
   return [...result];
 }
 
-/** Broadcasts a Who-Is and returns [{ deviceName, ipAddress, deviceId }] for every device that answers, sorted by name. */
+/** BMS connection UI: discovers BACnet devices with Who-Is and returns their names, addresses, and IDs sorted by name. */
 async function discoverBmsDevices({ client, bacnet, broadcastAddresses, windowMs = DISCOVERY_WINDOW_MS, nameTimeout = NAME_TIMEOUT_MS } = {}) {
   const { ObjectType, PropertyIdentifier } = bacnet ?? require("@bacnet-js/client");
   let ownedClient;
@@ -33,6 +36,7 @@ async function discoverBmsDevices({ client, bacnet, broadcastAddresses, windowMs
   }
 
   const found = new Map();
+  // BMS discovery: captures device identifiers from BACnet I-Am responses during the Who-Is window.
   const onIAm = (content) => {
     const payload = content?.payload;
     if (!payload || !Number.isInteger(payload.deviceId)) return;

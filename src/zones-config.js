@@ -1,6 +1,7 @@
 ﻿const ICAL_TO_SCHEDULE = "icalToScheduleConf";
 const SCHEDULE_EVENTS = "scheduleEventsConf";
 
+// Zones & Schedules configuration: supplies the defaults inherited by each zone.
 function createDefaultZoneSettings() {
   return {
     groupEvents: true,
@@ -30,6 +31,7 @@ function createDefaultZoneSettings() {
   };
 }
 
+// Zones & Schedules configuration: supplies defaults for importing events into existing BMS schedules.
 function createDefaultScheduleEventsConf() {
   return {
     timeBetweenScheduleUpdate: 180,
@@ -38,6 +40,7 @@ function createDefaultScheduleEventsConf() {
   };
 }
 
+// Zones & Schedules configuration: builds the initial structure for both schedule use cases.
 function createDefaultZonesSchedules() {
   return {
     icalToScheduleConf: {
@@ -53,12 +56,15 @@ function createDefaultZonesSchedules() {
   };
 }
 
+// Zones & Schedules validation: creates a field error or a standalone warning for the UI.
 function issue(message, path, { standalone = false } = {}) {
   return standalone ? { message, path, standalone } : { message, path };
 }
 
+// Zones & Schedules validation: accepts finite numeric settings only.
 const isNumber = (value) => typeof value === "number" && Number.isFinite(value);
 
+// Zones & Schedules validation: checks a time-zone name against the runtime's IANA database.
 function isValidTimeZone(timeZone) {
   try {
     new Intl.DateTimeFormat("en-CA", { timeZone });
@@ -68,8 +74,9 @@ function isValidTimeZone(timeZone) {
   }
 }
 
-// Validates only the keys present, so it serves both the global defaults and per-zone overrides.
+// Zones & Schedules validation: checks whichever settings are present in global defaults or zone overrides.
 function validateZoneSettings(settings, basePath, errors) {
+  // Zones & Schedules validation: applies a validator only when the corresponding setting is present.
   const check = (key, valid, message) => {
     if (Object.hasOwn(settings, key) && !valid(settings[key])) errors.push(issue(message, `${basePath}.${key}`));
   };
@@ -86,6 +93,7 @@ function validateZoneSettings(settings, basePath, errors) {
   check("weekly", (v) => v && typeof v === "object" && !Array.isArray(v), "Must be a JSON object");
 }
 
+// Zones & Schedules validation: verifies global settings, zones, device bindings, BMS connections, and instance ranges before startup.
 function validateZonesSchedules(data, { deviceProfiles = {}, connections = {} } = {}) {
   const errors = [];
   const conf = data?.icalToScheduleConf;
@@ -126,6 +134,7 @@ function validateZonesSchedules(data, { deviceProfiles = {}, connections = {} } 
     }
   }
 
+  // Zones & Schedules validation: distinguishes zones that add events to an existing schedule.
   const isEventsZone = (zone) => zone?.configuration === SCHEDULE_EVENTS;
   const icalZoneCount = data.zones.filter((zone) => !isEventsZone(zone)).length;
   if (rangeValid && icalZoneCount > max - min + 1) {
@@ -224,8 +233,7 @@ function validateZonesSchedules(data, { deviceProfiles = {}, connections = {} } 
   return errors;
 }
 
-// The scheduleAV analog values only exist on REST API BMS. Their instances must not fall in the
-// automatic AV range of any device profile, nor on one of its manual AV instances.
+// Zones & Schedules validation: prevents REST-created scheduleAV objects overlapping automatic or manual device AV instances.
 function scheduleAvOverlaps(zones, { min, max, offset, deviceProfiles, connections, isEventsZone }) {
   const errors = [];
   const usesScheduleAV = zones.some((zone) => {
@@ -237,6 +245,7 @@ function scheduleAvOverlaps(zones, { min, max, offset, deviceProfiles, connectio
   // The whole range is reserved: the REST driver clears every analog value of it at startup.
   const first = offset + min;
   const last = offset + max;
+  // Zones & Schedules validation: checks whether two inclusive BACnet instance ranges overlap.
   const hasOverlap = (start, end) => first < end && last >= start;
   const path = "zonesSchedules.icalToScheduleConf.scheduleAVInstanceOffset";
 
@@ -264,10 +273,12 @@ function scheduleAvOverlaps(zones, { min, max, offset, deviceProfiles, connectio
 // Fills every setting a zone does not override from the global defaults of its configuration.
 // Zones of the ical configuration get consecutive schedule instance numbers; the others keep their own schedule ID.
 // The BMS connection of an iCal zone is the one of its devices (first device's profile; validation ensures they all match).
+// Zones & Schedules configuration: finds the BMS connection assigned through a zone's device profiles.
 function icalZoneConnections(zone, deviceProfiles = {}) {
   return [...new Set(Object.keys(zone.devices || {}).map((profileName) => deviceProfiles[profileName]?.controller?.connectionName || ""))];
 }
 
+// Zones & Schedules runtime: merges global defaults into zones and assigns their effective connection and schedule ID.
 function resolveZones({ icalToScheduleConf, scheduleEventsConf, zones }, deviceProfiles = {}) {
   const [min] = icalToScheduleConf.scheduleInstanceRange;
   let icalIndex = 0;
@@ -287,7 +298,7 @@ function resolveZones({ icalToScheduleConf, scheduleEventsConf, zones }, deviceP
   });
 }
 
-// ADE calendars: set &lastDate=<today + nbrDaysPreview>. Idempotent, an existing &lastDate is replaced.
+// ADE calendar integration: sets or updates the optional lastDate parameter from the zone preview horizon.
 function applyAdeUrlSuffix(zone, now = new Date()) {
   if (!zone.addSuffixToAdeURL || typeof zone.url !== "string") return zone.url;
   const d = new Date(now);
@@ -298,7 +309,7 @@ function applyAdeUrlSuffix(zone, now = new Date()) {
     : `${zone.url}&lastDate=${suffix}`;
 }
 
-// Non-blocking check: returns one warning per iCal URL shared by several zones.
+// Zones & Schedules validation: reports calendar URLs unintentionally shared by multiple zones.
 function findDuplicateIcalUrls(zones) {
   const byUrl = new Map();
   for (const zone of zones) {

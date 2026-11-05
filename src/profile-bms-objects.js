@@ -3,7 +3,7 @@ const { resolveZones, ICAL_TO_SCHEDULE } = require("./zones-config");
 const TYPE_NAMES = { 2: "analogValue", 5: "binaryValue", analogValue: "analogValue", binaryValue: "binaryValue" };
 
 /**
- * Rows of the device profile table built from the objects read on the BMS (listBmsObjects result):
+ * Device profile editor: builds table rows from objects read on the BMS (listBmsObjects result):
  * only the analog/binary values that match an object of the profile, one row per BACnet object.
  * A downlink object bound to a zone of the iCal configuration also gets that zone's schedule and
  * its present value, taken from the schedules read on the same BMS.
@@ -33,6 +33,7 @@ function buildBmsObjectRows({ deviceProfile, definition, connectionName, bmsObje
   }
 
   const scheduleValues = new Map((bmsObjects?.schedules ?? []).map((schedule) => [Number(schedule.instance), schedule.presentValue ?? ""]));
+  // Device profile editor: finds the zone binding for an object and its device number.
   const zoneOf = (objectName, deviceNum) => zones.find((zone) => {
     const binding = zone.devices?.[deviceProfile];
     return binding?.AVToBindName === objectName && (deviceNum === undefined || (binding.deviceNums ?? []).includes(deviceNum));
@@ -63,7 +64,7 @@ function buildBmsObjectRows({ deviceProfile, definition, connectionName, bmsObje
 const WITHIN_RANGE = "compareToUplinkObjectWithinRange";
 
 /**
- * Marks the uplink rows targeted by a "compare with uplink object" downlink strategy:
+ * Device profile editor: marks uplink rows targeted by a "compare with uplink object" downlink strategy:
  * "ok" when the downlink value on the BMS already matches the uplink value (no downlink scheduled),
  * "due" when it does not (a downlink will be sent). Same rules as shouldTriggerDownlink in downlink.js.
  */

@@ -23,11 +23,13 @@ const defaultHttpClient = axios.create({
   validateStatus: () => true
 });
 
+// Distech REST adapter: selects a configured authorization header or builds Basic authentication.
 function getAuthorization(controller) {
   if (controller.httpAuthentication) return controller.httpAuthentication;
   return `Basic ${Buffer.from(`${controller.login}:${controller.password}`).toString("base64")}`;
 }
 
+// Distech REST adapter: builds the common authenticated HTTP request to the controller API.
 function buildRequest(controller, path, body, timeout) {
   return {
     method: "POST",
@@ -38,6 +40,7 @@ function buildRequest(controller, path, body, timeout) {
   };
 }
 
+// Distech REST adapter: builds the BACnet REST request for a device's uplink writes or downlink reads.
 function buildReadWriteRequest(device, dataDirection, timeout) {
   const references = Object.values(device.bacnet.objects)
     .filter((object) => object.dataDirection === dataDirection)
@@ -55,6 +58,7 @@ function buildReadWriteRequest(device, dataDirection, timeout) {
   );
 }
 
+// Distech REST adapter: builds a batch request to create the device profile's BACnet objects.
 function buildCreateRequest(device, timeout) {
   const requests = Object.values(device.bacnet.objects).map((object, index) => ({
     id: String(index + 1),
@@ -65,8 +69,7 @@ function buildCreateRequest(device, timeout) {
   return buildRequest(device.controller, "/batch", { requests }, timeout);
 }
 
-// Downlink objects are written with the present value of their schedule when a zone controls them,
-// else with their last known value, else with the profile default.
+// Distech REST adapter: initializes downlink objects from a controlling schedule, last known value, or profile default.
 function buildWriteValuesRequest(device, previousValues, timeout, initialValues = {}) {
   const references = Object.entries(device.bacnet.objects).map(([key, object]) => {
     let value = object.value;
@@ -84,6 +87,7 @@ function buildWriteValuesRequest(device, previousValues, timeout, initialValues 
   );
 }
 
+// Distech REST adapter: executes an HTTP request and normalizes transport failures into a response shape.
 async function send(httpClient, request) {
   try {
     const response = await httpClient.request(request);
@@ -93,6 +97,7 @@ async function send(httpClient, request) {
   }
 }
 
+// Distech REST adapter: translates HTTP and transport errors into actionable BMS log messages.
 function describeFailure(response, url) {
   if (response.status === 404) return `Invalid URL: '${url}'`;
   if (response.status === 400) {
@@ -103,6 +108,7 @@ function describeFailure(response, url) {
   return `${ERROR_MESSAGES[response.status] || `Unknown error ${response.status}`}${detail}`;
 }
 
+// Distech REST adapter: copies values returned by the BMS into the device's mapped downlink objects.
 function storeDownlinkValues(device, payload) {
   const parsed = JSON.parse(payload);
   for (const result of parsed.results ?? []) {
@@ -114,7 +120,7 @@ function storeDownlinkValues(device, payload) {
   }
 }
 
-// Returns true when the stream completed without error.
+// Distech REST adapter: runs one uplink-write or downlink-read phase, creating missing BACnet objects if needed.
 async function runStream(device, dataDirection, ctx) {
   const { httpClient, previousValues, timeout, log, getInitialValues } = ctx;
   const name = device.identity.deviceName;
@@ -174,14 +180,14 @@ async function runStream(device, dataDirection, ctx) {
   return true;
 }
 
+// MQTT diagnostics: records a snapshot of a device after its REST BACnet operation.
 function logDeviceObject(log, device, dataDirection) {
   const label = dataDirection === "uplink" ? "uplink" : "downlink";
   log("output", `Device object after ${label} process:\n${JSON.stringify(device, null, 2)}`, structuredClone(device), dataDirection === "uplink" ? "deviceUplink" : "deviceDownlink");
 }
 
 /**
- * Uplink stream (write), then downlink stream (read + store) if the device has downlink objects.
- * Mutates device.bacnet.objects[*].value with downlink values read from the controller.
+ * Distech REST adapter: writes uplink values, then reads downlink values into the mapped device objects.
  */
 async function processRestApiBacnet(device, { httpClient = defaultHttpClient, previousValues = {}, timeout = DEFAULT_TIMEOUT_MS, log = () => {}, getInitialValues } = {}) {
   if (device?.controller?.protocol !== "restAPIBacnet") return { handled: false };

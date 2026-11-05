@@ -15,6 +15,7 @@ const NETWORKS = {
   actility: { uplinkSuffix: "/uplink", downlinkSuffix: "/downlink" }
 };
 
+// MQTT uplink processing: identifies the network-server payload format and maps it to configured BACnet objects.
 function mapIncomingPacket(topic, rawPayload, deviceProfiles) {
   let payload;
   try {
@@ -156,6 +157,7 @@ function mapIncomingPacket(topic, rawPayload, deviceProfiles) {
   return { device };
 }
 
+// MQTT service: manages broker connection, device processing, logs, and protocol-specific downlink dispatch.
 function createMqttService({ getDeviceProfiles, getScheduleValues, onLog = () => {}, clientFactory = mqtt.connect, restApiBacnetHandler = processRestApiBacnet, bacnetHandler = processBacnet } = {}) {
   const protocolHandlers = { restAPIBacnet: restApiBacnetHandler, bacnet: bacnetHandler };
   const previousValues = {};
@@ -167,14 +169,17 @@ function createMqttService({ getDeviceProfiles, getScheduleValues, onLog = () =>
   const rawMessages = [];
   let rawSequence = 0;
 
+  // MQTT diagnostics: stores the latest received broker message for the raw-message panel.
   function addRawMessage(topic, payload) {
     rawMessages.push({ id: ++rawSequence, timestamp: new Date().toISOString(), topic, payload: payload.toString("utf8") });
     if (rawMessages.length > MAX_LOG_ENTRIES) rawMessages.shift();
   }
 
+  // MQTT diagnostics API: returns raw messages newer than the caller's last sequence number.
   function getRawMessages(after = 0) {
     return rawMessages.filter((entry) => entry.id > after);
   }
+  // MQTT diagnostics: stores a bounded log entry and forwards it to the application logger.
   function addLog(level, message, details) {
     const entry = { id: ++sequence, timestamp: new Date().toISOString(), level, message };
     if (details !== undefined) entry.details = details;
@@ -183,6 +188,7 @@ function createMqttService({ getDeviceProfiles, getScheduleValues, onLog = () =>
     onLog(entry);
   }
 
+  // MQTT downlink processing: prepares and publishes a network-server message after BMS processing succeeds.
   async function sendDownlink(device, deviceLog) {
     const name = device.identity.deviceName;
     const message = prepareDownlink(device, previousValues, deviceLog);
@@ -196,6 +202,7 @@ function createMqttService({ getDeviceProfiles, getScheduleValues, onLog = () =>
     deviceLog("info", `${name} (${protocolLabel(device)}): TX time = ${Date.now() - device.transmitTime}ms`, undefined, "txTime");
   }
 
+  // MQTT status API: returns the broker state and non-secret connection details for the UI.
   function getStatus() {
     return {
       state,
@@ -205,10 +212,12 @@ function createMqttService({ getDeviceProfiles, getScheduleValues, onLog = () =>
     };
   }
 
+  // MQTT diagnostics API: returns application log entries newer than the caller's sequence number.
   function getLogs(after = 0) {
     return logs.filter((entry) => entry.id > after);
   }
 
+  // MQTT downlink processing: publishes a JSON payload only while the broker is connected.
   function publish(topic, payload) {
     return new Promise((resolve, reject) => {
       if (!client || state !== "connected") {
@@ -219,6 +228,7 @@ function createMqttService({ getDeviceProfiles, getScheduleValues, onLog = () =>
     });
   }
 
+  // MQTT connection management: closes the active broker client and clears its connection state.
   function disconnect() {
     const activeClient = client;
     client = null;
@@ -229,6 +239,7 @@ function createMqttService({ getDeviceProfiles, getScheduleValues, onLog = () =>
     return getStatus();
   }
 
+  // MQTT connection management: validates settings, subscribes to uplinks, and dispatches device messages.
   function connect(options) {
     const server = String(options?.server || "").trim();
     const port = Number(options?.port);
@@ -281,6 +292,7 @@ function createMqttService({ getDeviceProfiles, getScheduleValues, onLog = () =>
           else if (result.device) {
             const debug = result.device.controller?.debug || [];
             // Errors are always shown; "all" enables every event category but not the device object prints.
+            // MQTT diagnostics: applies the device profile's debug categories to messages from one uplink.
             const deviceLog = (level, message, details, category) => {
               if (level === "error" || debug.includes(category) || (level !== "output" && debug.includes("all"))) addLog(level, message, details);
             };
@@ -320,12 +332,14 @@ function createMqttService({ getDeviceProfiles, getScheduleValues, onLog = () =>
     return getStatus();
   }
 
+  // MQTT device state: clears cached values when a device profile configuration changes.
   function clearPreviousValues(deviceProfile) {
     for (const [deviceName, entry] of Object.entries(previousValues)) {
       if (entry.identity?.deviceProfile === deviceProfile) delete previousValues[deviceName];
     }
   }
 
+  // MQTT device state API: returns copies of cached device values for the selected profile.
   function getPreviousValues(deviceProfile) {
     return Object.values(previousValues)
       .filter((entry) => entry.identity?.deviceProfile === deviceProfile)

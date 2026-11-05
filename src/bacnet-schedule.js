@@ -17,16 +17,21 @@ if (!asn1.bacappEncodeApplicationData.supportsObjectPropertyReference) {
 const BACNET_PORT = 47808;
 const DAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"];
 
+// Native BACnet schedule adapter: encodes a number as a BACnet REAL application value.
 const real = (value) => ({ type: ApplicationTag.REAL, value: Number(value) });
+// Native BACnet schedule adapter: encodes an empty schedule transition as BACnet NULL.
 const nullValue = () => ({ type: ApplicationTag.NULL, value: null });
+// Native BACnet schedule adapter: encodes a schedule label as a BACnet character string.
 const string = (value) => ({ type: ApplicationTag.CHARACTER_STRING, value: String(value) });
 
 // The BACnet client encodes times from the local clock fields of a Date.
+// Native BACnet schedule adapter: converts a schedule time string into the local-clock Date format expected by bacnet-js.
 function timeToDate(time) {
   const [hours, minutes, seconds] = String(time).split(":");
   return new Date(2000, 0, 1, Number(hours), Number(minutes), Math.floor(Number(seconds || 0)));
 }
 
+// Native BACnet schedule adapter: encodes a day's transitions for a BACnet schedule property.
 function transitionsToEntries(transitions) {
   return Object.values(transitions ?? {})
     .sort((a, b) => String(a.time).localeCompare(String(b.time)))
@@ -36,12 +41,12 @@ function transitionsToEntries(transitions) {
     }));
 }
 
-/** zone.weekly ({monday: {transitions}}) -> BACnet WEEKLY_SCHEDULE payload (Monday first). */
+/** Native BACnet schedule adapter: converts zone.weekly into a Monday-first WEEKLY_SCHEDULE payload. */
 function toWeeklySchedule(weekly = {}) {
   return DAYS.map((day) => transitionsToEntries(weekly[day]?.transitions));
 }
 
-/** buildSpecialEvents() result -> BACnet EXCEPTION_SCHEDULE payload. */
+/** Native BACnet schedule adapter: converts iCalendar special events into an EXCEPTION_SCHEDULE payload. */
 function toExceptionSchedule(special) {
   return Object.values(special).map((event) => {
     const { year, month, "day-of-month": day } = event.period.date;
@@ -54,16 +59,21 @@ function toExceptionSchedule(special) {
   });
 }
 
+// Native BACnet schedule adapter: builds the identifier for a schedule object.
 const scheduleId = (instance) => ({ type: ObjectType.SCHEDULE, instance });
+// Native BACnet schedule adapter: builds the identifier for an analog value bound to a schedule.
 const analogValueId = (instance) => ({ type: ObjectType.ANALOG_VALUE, instance });
 
-/** Schedule operations over native BACnet (bacnet-js), mirroring the REST API operations of ical-schedule.js. */
+/** Native BACnet schedule adapter: provides schedule setup, binding, and update operations for the schedule service. */
 function createNativeScheduleDriver(connection, { client, log = () => {}, deviceProfiles = {} } = {}) {
   const address = { address: `${connection.ipAddress}:${BACNET_PORT}` };
+  // Native BACnet schedule adapter: uses an injected client in tests or the shared application client.
   const bacnet = () => client ?? getClient();
 
+  // Native BACnet schedule adapter: writes one property to the selected controller.
   const write = (objectId, property, values, options = {}) => bacnet().writeProperty(address, objectId, property, values, options);
 
+  // Native BACnet schedule adapter: runs independent property writes and logs each failed result.
   async function settleAll(label, tasks) {
     const results = await Promise.allSettled(tasks.map((task) => task()));
     results.forEach((result) => {
@@ -71,15 +81,15 @@ function createNativeScheduleDriver(connection, { client, log = () => {}, device
     });
   }
 
-  // Deleting an object that does not exist is expected on a first start.
+  // Native BACnet schedule adapter: removes an existing object before setup; absence is expected on first start.
   const remove = (objectId) => bacnet().deleteObject(address, objectId).catch(() => {});
 
-  // index/priority are explicit because the client otherwise encodes them as 0, which controllers reject (Class:0 Code:2).
+  // Native BACnet schedule adapter: creates a named schedule with explicit index and priority values required by controllers.
   const create = (objectId, name) => bacnet().createObject(address, objectId, [
     { property: { id: PropertyIdentifier.OBJECT_NAME, index: ASN1_ARRAY_ALL }, value: [string(name)], priority: ASN1_NO_PRIORITY }
   ]);
 
-  // Same defaults as at startup, also used to rebuild a schedule that disappeared from the BMS.
+  // Native BACnet schedule adapter: applies the same defaults and bindings used at startup when rebuilding a missing schedule.
   async function initializeSchedule(zone, profiles) {
     const id = scheduleId(zone.scheduleID);
     await settleAll("Schedule setup", [
@@ -89,6 +99,7 @@ function createNativeScheduleDriver(connection, { client, log = () => {}, device
     ]);
   }
 
+  // Native BACnet schedule adapter: replaces the configured schedule range with objects for the active zones.
   async function setupSchedules(zones, conf) {
     const [min, max] = conf.scheduleInstanceRange;
     for (let i = min; i <= max; i++) await remove(scheduleId(i));
@@ -99,7 +110,7 @@ function createNativeScheduleDriver(connection, { client, log = () => {}, device
     ]));
   }
 
-  // The schedule drives the AVToBindName (downlink) objects of its zone devices through its list of object property references.
+  // Native BACnet schedule adapter: builds property references from a zone schedule to its bound device analog values.
   function referencesFor(zone, profiles) {
     return boundObjects(zone, profiles).map((instance) => ({
       type: ApplicationTag.DEVICE_OBJECT_PROPERTY_REFERENCE,
@@ -107,10 +118,12 @@ function createNativeScheduleDriver(connection, { client, log = () => {}, device
     }));
   }
 
+  // Native BACnet schedule adapter: writes a zone's device references to its schedule object.
   function writeReferences(zone, profiles) {
     return write(scheduleId(zone.scheduleID), PropertyIdentifier.LIST_OF_OBJECT_PROPERTY_REFERENCES, referencesFor(zone, profiles));
   }
 
+  // Native BACnet schedule adapter: binds each zone schedule to its configured device downlink objects.
   async function setupBindings(zones, conf, profiles = deviceProfiles) {
     const bindings = zones.map((zone) => ({
       zone,
@@ -135,6 +148,7 @@ function createNativeScheduleDriver(connection, { client, log = () => {}, device
     priority: 16
   }];
 
+  // Native BACnet schedule adapter: writes weekly and exception events and the zone's unoccupied default.
   async function writeZoneSchedule(zone, special) {
     const id = scheduleId(zone.scheduleID);
     const exceptions = Object.keys(special ?? {}).length ? toExceptionSchedule(special) : EMPTY_EXCEPTION_SCHEDULE;
@@ -143,7 +157,7 @@ function createNativeScheduleDriver(connection, { client, log = () => {}, device
     await write(id, PropertyIdentifier.SCHEDULE_DEFAULT, [real(zone.valueUnOccupied)]);
   }
 
-  // An unknown object means the schedule is missing on the BMS: it is recreated with the same instance, then written again once.
+  // Native BACnet schedule adapter: updates a zone schedule and optionally recreates a missing schedule at the same instance.
   async function updateZoneSchedule(zone, special, { recreate = false } = {}) {
     try {
       await writeZoneSchedule(zone, special);
@@ -157,6 +171,7 @@ function createNativeScheduleDriver(connection, { client, log = () => {}, device
     }
   }
 
+  // Native BACnet schedule adapter: calculates the BACnet AV instances controlled by a zone.
   function boundObjects(zone, deviceProfiles) {
     const objects = [];
     for (const [profileName, device] of Object.entries(zone.devices ?? {})) {

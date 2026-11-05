@@ -1,5 +1,6 @@
 // Protocol-independent downlink preparation: decides if a downlink is needed and builds the MQTT message.
 
+// MQTT logging: formats the selected BMS protocol and connection name for device messages.
 function protocolLabel(device) {
   const labels = { restAPIBacnet: "Rest API", bacnet: "BACnet" };
   const protocol = labels[device.controller.protocol] ?? device.controller.protocol;
@@ -8,11 +9,13 @@ function protocolLabel(device) {
 }
 
 // Range is an offset band [center + min, center + max].
+// Downlink decision: checks whether a value falls inside a configured offset band.
 function isWithinBand(range, center, value) {
   const [min, max] = Array.isArray(range) && range.length >= 2 ? range : [0, 0];
   return value >= center + min && value <= center + max;
 }
 
+// Downlink decision: compares a mapped value with its last sent value or a related uplink value.
 function shouldTriggerDownlink(objects, previousObjects, objectName, object) {
   const previousValue = previousObjects[objectName]?.value;
   const uplinkValue = object.uplinkToCompareWith ? objects[object.uplinkToCompareWith]?.value : undefined;
@@ -32,6 +35,7 @@ function shouldTriggerDownlink(objects, previousObjects, objectName, object) {
   }
 }
 
+// Downlink encoding: groups all downlink values that share the selected LoRaWAN port.
 function buildPayloadForObject(objects, objectName) {
   const downlinkPort = objects[objectName].downlinkPort;
   const payload = {};
@@ -43,6 +47,7 @@ function buildPayloadForObject(objects, objectName) {
   return { downlinkPort, payload };
 }
 
+// Downlink logging: explains which mapped value and strategy caused a downlink.
 function describeTrigger(device, objects, previousObjects, objectName) {
   const object = objects[objectName];
   const sourceName = object.uplinkToCompareWith;
@@ -63,6 +68,7 @@ function describeTrigger(device, objects, previousObjects, objectName) {
   }
 }
 
+// Network-server adapter: encodes mapped downlink values into the configured server's MQTT message format.
 function buildMessage(device, downlinkPort, payload, log) {
   const objects = device.bacnet.objects;
   const remapped = {};
@@ -109,7 +115,7 @@ function buildMessage(device, downlinkPort, payload, log) {
 }
 
 /**
- * Returns { topic, payload } to publish, or null when no downlink is needed.
+ * Downlink coordinator: prepares an MQTT message when a configured strategy triggers.
  * Updates previousValues[deviceName] with the values that are sent.
  */
 function prepareDownlink(device, previousValues, log = () => {}) {

@@ -14,7 +14,9 @@
   paused: { log: false, raw: false }
 };
 
+// UI helper: selects the first element matching a CSS selector.
 const $ = (selector) => document.querySelector(selector);
+// UI helper: escapes user-provided text before inserting it into generated HTML.
 const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, (character) => ({
   "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
 }[character]));
@@ -26,6 +28,7 @@ const SCHEDULE_CONFIGS = [
   [EVENTS_CONF, "Add events to an existing BACnet schedule object"]
 ];
 
+// Zones & Schedules editor: returns the client-side defaults for zone settings.
 function defaultScheduleDefaults() {
   return {
     groupEvents: true, timeZone: "Europe/Paris", eventsToDiscard: ["SOBRIETE ENERGETIQUE"],
@@ -35,6 +38,7 @@ function defaultScheduleDefaults() {
   };
 }
 
+// Zones & Schedules editor: creates default global settings and an empty zone list.
 function defaultZonesSchedules() {
   return {
     icalToScheduleConf: {
@@ -54,7 +58,7 @@ function defaultZonesSchedules() {
   };
 }
 
-// Fills what files saved before the second global configuration (or the log options) do not contain.
+// Zones & Schedules editor: fills defaults missing from configurations saved by older application versions.
 function normalizeZonesSchedules(zonesSchedules) {
   const defaults = defaultZonesSchedules();
   for (const [key] of SCHEDULE_CONFIGS) {
@@ -64,8 +68,10 @@ function normalizeZonesSchedules(zonesSchedules) {
   return zonesSchedules;
 }
 
+// Zones & Schedules editor: selects the global settings inherited by a zone.
 const confKeyOfZone = (zone) => (zone?.configuration === EVENTS_CONF ? EVENTS_CONF : ICAL_CONF);
 
+// Configuration editor: returns a fresh default configuration for the browser UI.
 function defaultConfig() {
   return {
     deviceProfiles: {},
@@ -75,6 +81,7 @@ function defaultConfig() {
   };
 }
 
+// BMS connection editor: creates the default fields for a new controller connection.
 function defaultConnection() {
   return {
     ipAddress: "",
@@ -91,6 +98,7 @@ const NETWORK_PREFILLS = {
 };
 const MQTT_TEXT_FIELDS = ["networkServer", "server", "port", "username", "password", "topic", "grpcApiKey", "serverAddress", "grpcPort"];
 
+// MQTT settings editor: reads network-server-specific fields from the form.
 function networkSettings() {
   return {
     networkServer: $("#mqtt-networkServer").value,
@@ -100,7 +108,7 @@ function networkSettings() {
   };
 }
 
-// Fields still holding a prefilled value of any network server are replaced; values typed by the user are kept.
+// MQTT settings editor: updates untouched defaults when the selected network server changes.
 function applyNetworkPrefill(onlyEmpty = false) {
   const prefill = NETWORK_PREFILLS[$("#mqtt-networkServer").value] || {};
   for (const field of ["server", "username", "topic"]) {
@@ -111,10 +119,12 @@ function applyNetworkPrefill(onlyEmpty = false) {
   if (!$("#mqtt-port").value) $("#mqtt-port").value = "1883";
 }
 
+// MQTT settings editor: shows ChirpStack-only API settings when that network server is selected.
 function toggleChirpstackFields() {
   $("#mqtt-chirpstack-fields").hidden = $("#mqtt-networkServer").value !== "chirpstack";
 }
 
+// MQTT settings editor: infers network-server settings from the existing device profiles.
 function networkFromProfiles(profiles) {
   const lorawan = Object.values(profiles || {}).map((device) => device.lorawan).find((item) => item?.networkServer);
   if (!lorawan) return null;
@@ -122,6 +132,7 @@ function networkFromProfiles(profiles) {
   return { networkServer: lorawan.networkServer, grpcApiKey: chirpstack.grpcApiKey || "", serverAddress: chirpstack.serverAddress || "", grpcPort: chirpstack.grpcPort || 8080 };
 }
 
+// MQTT settings editor: displays network-server settings in the form.
 function showNetworkSettings(network) {
   $("#mqtt-networkServer").value = network.networkServer;
   $("#mqtt-grpcApiKey").value = network.grpcApiKey ?? "";
@@ -130,12 +141,13 @@ function showNetworkSettings(network) {
   toggleChirpstackFields();
 }
 
+// MQTT settings editor: fills the network-server form from the supplied profiles.
 function inferNetworkFromProfiles(profiles = state.config.deviceProfiles) {
   const network = networkFromProfiles(profiles);
   if (network) showNetworkSettings(network);
 }
 
-// Existing profiles define the network server until one has been saved with the MQTT connection.
+// MQTT settings editor: uses device profiles as a fallback until settings have been saved.
 function inferNetworkWhenUnsaved() {
   if (state.mqttLoaded && state.configLoaded && !state.mqttNetworkSaved) {
     inferNetworkFromProfiles();
@@ -143,6 +155,7 @@ function inferNetworkWhenUnsaved() {
   }
 }
 
+// Device profile editor: creates a new profile with the selected BMS connection and default mappings.
 function makeDevice(name, connectionName) {
   const device = {
     identity: { maxDevNum: 10 },
@@ -156,6 +169,7 @@ function makeDevice(name, connectionName) {
   return device;
 }
 
+// Device profile editor: creates a new BACnet-to-payload mapping with default settings.
 function makeObject() {
   return {
     lorawanPayloadName: "payload-name", dataDirection: "uplink", downlinkPort: 30,
@@ -165,7 +179,7 @@ function makeObject() {
   };
 }
 
-// Smallest instance offset not yet used by another auto object of the same type.
+// Device profile editor: chooses the next unused automatic BACnet instance offset for an object type.
 function nextInstanceOffset(device, objectType, excludeName) {
   const used = new Set(Object.entries(device.bacnet.objects)
     .filter(([name, o]) => name !== excludeName && o.objectType === objectType && o.assignementMode !== "manual")
@@ -175,6 +189,7 @@ function nextInstanceOffset(device, objectType, excludeName) {
   return candidate;
 }
 
+// Configuration editor: assigns a value at a dot-separated path in a configuration object.
 function setPath(object, path, value) {
   const keys = path.split(".");
   const finalKey = keys.pop();
@@ -182,21 +197,25 @@ function setPath(object, path, value) {
   parent[finalKey] = value;
 }
 
+// Configuration editor: renders an escaped text or numeric input bound to a configuration path.
 function inputField(label, path, value, options = {}) {
   const { type = "text", wide = false, min, max, step, secret = false, placeholder = "" } = options;
   const attrs = [min !== undefined ? `min="${min}"` : "", max !== undefined ? `max="${max}"` : "", step !== undefined ? `step="${step}"` : ""].filter(Boolean).join(" ");
   return `<label class="field${wide ? " field-wide" : ""}"><span>${escapeHtml(label)}</span><input data-path="${escapeHtml(path)}" type="${secret ? "password" : type}" value="${escapeHtml(value)}" placeholder="${escapeHtml(placeholder)}" ${attrs} autocomplete="off"></label>`;
 }
 
+// Configuration editor: renders an escaped select input bound to a configuration path.
 function selectField(label, path, value, options, wide = false) {
   const choices = options.map(([optionValue, text]) => `<option value="${escapeHtml(optionValue)}"${String(value) === String(optionValue) ? " selected" : ""}>${escapeHtml(text)}</option>`).join("");
   return `<label class="field${wide ? " field-wide" : ""}"><span>${escapeHtml(label)}</span><select data-path="${escapeHtml(path)}">${choices}</select></label>`;
 }
 
+// Configuration editor: renders a checkbox for a boolean setting.
 function checkbox(label, checked, key) {
   return `<label class="check-field"><input type="checkbox" data-debug="${key}"${checked ? " checked" : ""}><span>${escapeHtml(label)}</span></label>`;
 }
 
+// Device profile editor: applies BMS connection and network-server settings to one profile.
 function applyConnection(device, connection, connectionName = "", network = networkSettings()) {
   device.controller ||= {};
   device.controller.connectionName = connectionName;
@@ -231,6 +250,7 @@ function applyConnection(device, connection, connectionName = "", network = netw
   }
 }
 
+// BMS connection editor: refreshes profiles assigned to a connection after its settings change.
 function applyConnectionToAssignedDevices(connectionName) {
   for (const [deviceName, device] of Object.entries(state.config.deviceProfiles)) {
     if (state.config.deviceConnections[deviceName] === connectionName) {
@@ -240,6 +260,7 @@ function applyConnectionToAssignedDevices(connectionName) {
 }
 
 // Device profiles only reference BMS connections by name; they never create them.
+// Configuration editor: rebuilds each profile's connection assignment and linked controller settings.
 function linkDeviceProfilesToConnections(deviceProfiles) {
   const deviceConnections = {};
   for (const [deviceName, device] of Object.entries(deviceProfiles)) {
@@ -251,10 +272,12 @@ function linkDeviceProfilesToConnections(deviceProfiles) {
   return { connections: state.config.connections, deviceConnections };
 }
 
+// Device profile editor: checks whether a profile contains any downlink mapping.
 function hasDownlink(device) {
   return Object.values(device.bacnet?.objects || {}).some((object) => object.dataDirection === "downlink");
 }
 
+// BMS connection editor: renders the selected connection and its BMS object controls.
 function renderGlobal() {
   const connectionName = state.selectedConnection;
   const global = state.config.connections[connectionName];
@@ -283,8 +306,10 @@ function renderGlobal() {
   renderBmsObjects(connectionName);
 }
 
+// BMS object table: creates the stable key used to select an object by type and instance.
 const objectKey = (object) => `${object.type}:${object.instance}`;
 
+// BMS object table: sorts values by the selected column, using numeric comparison where possible.
 function sortedObjects(objects, sort) {
   if (!sort) return objects;
   const factor = sort.dir === "desc" ? -1 : 1;
@@ -296,6 +321,7 @@ function sortedObjects(objects, sort) {
   });
 }
 
+// BMS object table: renders a sortable, selectable table for one group of controller objects.
 function table(group, columns, objects, result) {
   const sort = result.sort?.[group];
   const selected = result.selected;
@@ -310,6 +336,7 @@ function table(group, columns, objects, result) {
   return `<div class="bms-objects-table-wrap" data-scroll-key="bms:${escapeHtml(state.selectedConnection)}:${group}"><table class="bms-objects-table"><thead><tr><th class="bms-check"><input type="checkbox" data-bms-select-all="${group}" aria-label="Select all or none"${allChecked ? " checked" : ""}${someChecked ? " data-indeterminate" : ""}></th>${head}</tr></thead><tbody>${body}</tbody></table></div>`;
 }
 
+// BMS connection editor: renders controller values, schedules, and object-list actions.
 function renderBmsObjects(connectionName) {
   const result = state.bmsObjects?.[connectionName];
   let body = "";
@@ -328,6 +355,7 @@ function renderBmsObjects(connectionName) {
   restoreTableScroll($("#bms-objects-section"));
 }
 
+// Application navigation: renders profile, connection, zone, and page navigation state.
 function renderNavigation() {
   const entries = Object.entries(state.config.deviceProfiles);
   const connections = Object.entries(state.config.connections);
@@ -350,8 +378,10 @@ function renderNavigation() {
       <span class="zone-toggle ${zone.excluded ? "is-off" : "is-on"}" title="${zone.excluded ? "Excluded" : "Included"}" aria-hidden="true"><i>${zone.excluded ? "✕" : "✓"}</i></span>
       <span class="nav-chevron" aria-hidden="true">›</span>
     </button>`).join("");
+  // BMS connection navigation: renders a warning marker when a connection has a warning.
   const warningSign = (name) => state.config.connections[name]?.status?.warning
     ? `<span class="warning-sign" title="${escapeHtml(state.config.connections[name].status.warning)}" aria-label="Warning">⚠</span>` : "";
+  // BMS connection navigation: renders the connection's test status indicator.
   const statusDot = (name) => {
     const status = state.config.connections[name]?.status?.state;
     return status
@@ -369,6 +399,7 @@ function renderNavigation() {
     </button>`).join("");
 }
 
+// Application navigation: renders the category home page for the current selection.
 function renderCategoryPage() {
   const container = $("#category-page");
   const lists = {
@@ -411,6 +442,7 @@ function renderCategoryPage() {
     ${state.selectedView === "bms-home" ? `<button class="add-device-button category-add" type="button" data-action="whois-bms"${state.whoIs?.loading ? " disabled" : ""}><span aria-hidden="true">+</span> Add BMS connection using Who-Is</button>${whoIsResults()}` : ""}`;
 }
 
+// BMS discovery UI: renders BACnet Who-Is results for selection in the connection form.
 function whoIsResults() {
   const result = state.whoIs;
   if (!result) return "";
@@ -420,6 +452,7 @@ function whoIsResults() {
   return `<h3 class="whois-title">BMS found on the network</h3><div class="bms-objects-table-wrap"><table class="bms-objects-table"><thead><tr><th>Device Name</th><th>IP address</th><th>BACnet ID</th><th></th></tr></thead><tbody>${result.devices.map((device) => `<tr><td>${escapeHtml(device.deviceName)}</td><td>${escapeHtml(device.ipAddress)}</td><td>${device.deviceId}</td><td><button class="add-device-button category-add whois-add" type="button" data-action="add-connection" data-whois-name="${escapeHtml(device.deviceName)}" data-whois-ip="${escapeHtml(device.ipAddress)}"><span aria-hidden="true">+</span> Add this BMS</button></td></tr>`).join("")}</tbody></table></div>`;
 }
 
+// Device profile editor: renders the selected LoRaWAN profile and its BACnet object mappings.
 function renderDevice() {
   const container = $("#device-editor");
   const name = state.selectedDevice;
@@ -490,6 +523,7 @@ document.addEventListener("scroll", (event) => {
   if (key) tableScroll[key] = { top: event.target.scrollTop, left: event.target.scrollLeft };
 }, true);
 
+// BMS object tables: restores scroll positions after the UI rerenders a table.
 function restoreTableScroll(root) {
   root?.querySelectorAll("[data-scroll-key]").forEach((element) => {
     const position = tableScroll[element.dataset.scrollKey];
@@ -500,10 +534,12 @@ function restoreTableScroll(root) {
 const PREVIOUS_VALUE_COLUMNS = [["type", "Type"], ["instance", "Instance"], ["name", "Name"], ["presentValue", "Present value"], ["controlledBy", "Controlled by"]];
 const CENTERED_COLUMNS = new Set(["instance", "presentValue"]);
 
+// Device profile editor: builds the table comparing mapped objects with values read from the BMS.
 function previousValuesHtml() {
   const result = state.previousValues?.[state.selectedDevice];
   const rows = result?.rows ?? [];
   const busy = Boolean(result?.loading);
+  // Device profile editor: renders a shared table heading and its BMS read action.
   const headingWith = (extra = "") => `<h3>Objects on the BMS</h3><div class="mqtt-actions"><button class="button button-primary" type="button" data-action="get-profile-bms-objects"${busy ? " disabled" : ""}>Get BMS objects</button>${extra}</div>`;
   const heading = headingWith();
   if (busy) return `${heading}<p class="bms-objects-status">Reading the object list…</p>`;
@@ -511,17 +547,21 @@ function previousValuesHtml() {
   if (!result) return `${heading}<p class="bms-objects-status">Press "Get BMS objects" to read the objects of this device profile on the BMS.</p>`;
   if (!rows.length) return `${heading}<p class="bms-objects-status">No object of this device profile found on the BMS.</p>`;
   const sort = state.previousValuesSort ?? { key: "instance", dir: "asc" };
+  // Device profile editor: returns a display value, combining a controlling schedule's name and present value.
   const text = (row, key) => (key === "controlledBy" ? (row.controlledBy ? `${row.controlledBy.scheduleName} (${row.controlledBy.presentValue})` : "") : row[key]);
   const sorted = sort ? sortedObjects(rows.map((row) => ({ ...row, controlledBy: text(row, "controlledBy"), _row: row })), sort).map((row) => row._row) : rows;
   const head = PREVIOUS_VALUE_COLUMNS.map(([key, label]) => {
     const arrow = sort?.key === key ? (sort.dir === "desc" ? "▼" : "▲") : "↕";
     return `<th${CENTERED_COLUMNS.has(key) ? ` class="bms-center"` : ""}><button class="bms-sort${sort?.key === key ? " is-active" : ""}" type="button" data-action="sort-previous-values" data-key="${key}" title="Sort by ${label.toLowerCase()}">${label}<span aria-hidden="true">${arrow}</span></button></th>`;
   }).join("");
+  // Device profile editor: compares displayed values numerically when both represent numbers.
   const sameValue = (a, b) => (a !== "" && b !== "" && !Number.isNaN(Number(a)) && !Number.isNaN(Number(b)) ? Number(a) === Number(b) : String(a) === String(b));
+  // Device profile editor: assigns table styling based on whether uplink/downlink values match.
   const rowClassOf = (row) => (row.direction === "uplink" ? (row.downlinkPolicy === "due" ? "pv-mismatch" : row.downlinkPolicy === "ok" ? "pv-scheduled" : "")
     : row.direction !== "downlink" ? ""
       : !row.controlledBy ? "pv-downlink"
         : sameValue(row.controlledBy.presentValue, row.presentValue) ? "pv-scheduled" : "pv-mismatch");
+  // Device profile editor: collects unique device numbers whose rows have a requested comparison status.
   const checked = (cls) => new Set(rows.filter((row) => rowClassOf(row) === cls && row.deviceNum !== undefined).map((row) => row.deviceNum));
   const outdatedDevices = checked("pv-mismatch");
   const total = new Set([...outdatedDevices, ...checked("pv-scheduled")]).size;
@@ -533,6 +573,7 @@ function previousValuesHtml() {
   return `${headingWith(`<span class="bms-outdated-notice">Number of devices with oudated value : ${outdated}/${total}</span>`)}<div class="bms-objects-table-wrap" data-scroll-key="pv:${escapeHtml(state.selectedDevice)}"><table class="bms-objects-table"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>`;
 }
 
+// Device profile editor: inserts the BMS comparison table and preserves its scroll position.
 function renderPreviousValues() {
   const panel = $("#previous-values");
   if (!panel) return;
@@ -540,6 +581,7 @@ function renderPreviousValues() {
   restoreTableScroll(panel);
 }
 
+// Device profile editor: requests the controller objects matched to the selected device profile.
 async function getProfileBmsObjects() {
   const profile = state.selectedDevice;
   if (!profile || !state.config.deviceProfiles[profile]) return;
@@ -556,6 +598,7 @@ async function getProfileBmsObjects() {
   if (state.selectedDevice === profile) renderPreviousValues();
 }
 
+// Device profile editor: renders one BACnet object mapping and its direction-specific settings.
 function renderObject(name, object) {
   const downlink = object.dataDirection === "downlink";
   const objectKey = `${state.selectedDevice}::${name}`;
@@ -615,6 +658,7 @@ const SCHEDULE_SETTINGS = [
   { key: "weekly", kind: "json", label: "Weekly schedule", globalLabel: "Default weekly schedule" }
 ];
 
+// Zones & Schedules editor: renders one typed setting using its field specification.
 function scheduleSettingField(spec, value, attribute, isGlobal) {
   const label = isGlobal ? spec.globalLabel || spec.label : spec.label;
   const attrs = `${attribute}="${spec.key}"`;
@@ -649,6 +693,7 @@ const SCHEDULE_LOGS = [
 ];
 
 // Settings that share a row are displayed side by side; the offsets only apply to merged events.
+// Zones & Schedules editor: renders setting rows, optionally grouped into advanced sections.
 function scheduleSettingRows(rows, valueOf, attribute, isGlobal, grouped) {
   return rows.map((keys) => {
     const specs = keys.map((key) => SCHEDULE_SETTINGS.find((spec) => spec.key === key)).filter((spec) => !spec.groupedOnly || grouped);
@@ -658,6 +703,7 @@ function scheduleSettingRows(rows, valueOf, attribute, isGlobal, grouped) {
   }).join("");
 }
 
+// Zones & Schedules editor: wraps optional settings in an expandable panel.
 function advancedPanel(key, bodyHtml, title = "Advanced settings") {
   const expanded = Boolean(state.expandedAdvanced[key]);
   return `<section class="device-card advanced-card${expanded ? " is-expanded" : ""}">
@@ -672,6 +718,7 @@ function advancedPanel(key, bodyHtml, title = "Advanced settings") {
 }
 
 // Returns false (after a notice) when the JSON of the weekly schedule is invalid.
+// Zones & Schedules editor: converts an input value to its configured type and stores it.
 function applyScheduleSetting(target, input, key) {
   const spec = SCHEDULE_SETTINGS.find((candidate) => candidate.key === key);
   try {
@@ -686,17 +733,21 @@ function applyScheduleSetting(target, input, key) {
   render();
 }
 
+// Zones & Schedules editor: lists downlink objects available to bind to a zone.
 function downlinkObjectNames(deviceProfile) {
   return Object.entries(state.config.deviceProfiles[deviceProfile]?.bacnet?.objects || {})
     .filter(([, object]) => object.dataDirection === "downlink")
     .map(([name]) => name);
 }
 
+// Zones & Schedules editor: renders one set of global defaults and its polling/log settings.
 function renderScheduleConfSection(confKey, title) {
   const conf = state.config.zonesSchedules[confKey];
   const isIcal = confKey === ICAL_CONF;
+  // Zones & Schedules editor: renders a numeric input tagged for global schedule configuration.
   const confField = (label, path, value, options = {}) => inputField(label, path, value, { type: "number", step: 1, ...options }).replace("data-path=", "data-schedule-conf=");
   const grouped = conf.defaults.groupEvents === true;
+  // Zones & Schedules editor: retrieves the configured default for a zone setting.
   const valueOf = (key) => conf.defaults[key];
   const icalOnlyFields = isIcal ? (() => {
     const [first, last] = conf.scheduleInstanceRange;
@@ -727,10 +778,12 @@ function renderScheduleConfSection(confKey, title) {
   </section>`;
 }
 
+// Zones & Schedules editor: renders global settings for both schedule use cases.
 function renderScheduleGlobal() {
   $("#schedule-global-editor").innerHTML = SCHEDULE_CONFIGS.map(([key, title]) => renderScheduleConfSection(key, title)).join("");
 }
 
+// Zones & Schedules editor: renders the selected zone's settings and device bindings.
 function renderZone() {
   const container = $("#zone-editor");
   const { zones } = state.config.zonesSchedules;
@@ -742,6 +795,7 @@ function renderZone() {
   const eventsOnly = confKeyOfZone(zone) === EVENTS_CONF;
   const { defaults } = state.config.zonesSchedules[confKeyOfZone(zone)];
 
+  // Zones & Schedules editor: tags a setting input so zone changes use the correct update handler.
   const zoneField = (html) => html.replace("data-path=", "data-zone-field=");
   const connectionNames = Object.keys(state.config.connections);
   if (zone.connectionName && !connectionNames.includes(zone.connectionName)) connectionNames.push(zone.connectionName);
@@ -753,6 +807,7 @@ function renderZone() {
     const profileNames = deviceProfiles.includes(profileName) ? deviceProfiles : [profileName, ...deviceProfiles];
     const downlinkNames = downlinkObjectNames(profileName);
     if (device.AVToBindName && !downlinkNames.includes(device.AVToBindName)) downlinkNames.push(device.AVToBindName);
+    // Zones & Schedules editor: tags a device-binding input for its zone-specific update handler.
     const deviceField = (html) => html.replace("data-path=", "data-zone-device-field=");
     const deviceExpanded = Boolean(state.expandedZoneDevices[`${state.selectedZone}::${profileName}`]);
     const deviceNumbers = device.deviceNums || [];
@@ -790,6 +845,7 @@ function renderZone() {
     <div class="object-list">${deviceRows || `<div class="empty-objects">No device yet. Add the LoRaWAN devices controlled by this zone schedule.</div>`}</div></div>`}`;
 }
 
+// Zones & Schedules editor: validates and applies a change to the selected zone's settings.
 function handleZoneField(input) {
   const { zones } = state.config.zonesSchedules;
   const zone = zones[state.selectedZone];
@@ -821,6 +877,7 @@ function handleZoneField(input) {
   render();
 }
 
+// Zones & Schedules editor: updates a device profile, device numbers, or downlink binding in the selected zone.
 function handleZoneDeviceField(input) {
   const zone = state.config.zonesSchedules.zones[state.selectedZone];
   const profileName = input.closest("[data-zone-device]").dataset.zoneDevice;
@@ -848,6 +905,7 @@ function handleZoneDeviceField(input) {
   render();
 }
 
+// Application UI: rerenders the page sections and displays only the selected view.
 function render() {
   renderNavigation();
   renderGlobal();
@@ -885,9 +943,11 @@ const ISSUE_LABELS = {
 };
 
 // Turns a validation path such as "zonesSchedules.zones.3.url" into the title of the matching field.
+// Configuration validation UI: formats a validation path and message for display.
 function formatIssue(issue) {
   if (issue.standalone) return issue.message;
   const parts = String(issue.path ?? "").split(".");
+  // Configuration validation UI: finds the user-facing label corresponding to a configuration key.
   const settingLabel = (key, preferGlobal) => {
     const setting = SCHEDULE_SETTINGS.find((candidate) => candidate.key === key);
     return setting ? (preferGlobal && setting.globalLabel) || setting.label : null;
@@ -922,6 +982,7 @@ function formatIssue(issue) {
   return `${label}${context ? ` (${context})` : ""}: ${issue.message}`;
 }
 
+// Application notifications: displays a success, warning, or error notice with optional detail.
 function showNotice(message, kind = "success", { warning = "" } = {}) {
   fillNotice($("#notice"), message, kind);
   const extra = $("#notice-warning");
@@ -932,6 +993,7 @@ function showNotice(message, kind = "success", { warning = "" } = {}) {
   state.noticeTimer = kind === "error" ? null : setTimeout(dismissNotice, 10000);
 }
 
+// Application notifications: fills and reveals the notice element with the selected status style.
 function fillNotice(notice, message, kind) {
   const text = document.createElement("span");
   text.className = "notice-message";
@@ -947,6 +1009,7 @@ function fillNotice(notice, message, kind) {
   notice.hidden = false;
 }
 
+// Application notifications: hides the current notice and clears its dismissal timer.
 function dismissNotice() {
   clearTimeout(state.noticeTimer);
   state.noticeTimer = null;
@@ -954,11 +1017,13 @@ function dismissNotice() {
   $("#notice-warning").hidden = true;
 }
 
+// Configuration editor: reads a control value using the type appropriate to its HTML input.
 function inputValue(input) {
   if (input.type === "number") return input.value === "" ? "" : Number(input.value);
   return input.value;
 }
 
+// Device profile editor: renames a profile and updates configuration references to it.
 function renameDevice(oldName, newName) {
   const safeName = newName;
   if (/\s/.test(safeName)) {
@@ -989,6 +1054,7 @@ function renameDevice(oldName, newName) {
   }
 }
 
+// BMS connection editor: renames a connection and updates profile assignments.
 function renameConnection(oldName, newName) {
   const safeName = newName.trim();
   if (!safeName || (safeName !== oldName && Object.hasOwn(state.config.connections, safeName))) {
@@ -1007,6 +1073,7 @@ function renameConnection(oldName, newName) {
   }
 }
 
+// Device profile editor: renames an object mapping and updates mappings that refer to it.
 function renameObject(device, oldName, newName) {
   const safeName = newName;
   if (/\s/.test(safeName)) {
@@ -1029,6 +1096,7 @@ function renameObject(device, oldName, newName) {
   }
 }
 
+// Configuration editor: synchronizes each device profile's connection name with its assignment.
 function syncAssignedConnections() {
   for (const [deviceName, device] of Object.entries(state.config.deviceProfiles)) {
     const connection = state.config.connections[state.config.deviceConnections[deviceName]];
@@ -1036,6 +1104,7 @@ function syncAssignedConnections() {
   }
 }
 
+// BMS connection editor: writes a changed connection field and propagates it to assigned profiles.
 function setConnectionValue(path, value) {
   const connection = state.config.connections[state.selectedConnection];
   if (!connection) return;
@@ -1046,6 +1115,7 @@ function setConnectionValue(path, value) {
 
 // The editor keeps every zone in one list with an excluded flag; the stored
 // format keeps included zones in `zones` and excluded ones in `excludedZones`.
+// Configuration import/export: splits legacy combined zone settings into the two current configurations.
 function splitZones(zonesSchedules) {
   const zones = zonesSchedules.zones || [];
   return {
@@ -1055,6 +1125,7 @@ function splitZones(zonesSchedules) {
   };
 }
 
+// Configuration import/export: combines current global schedule settings with the zone list for export.
 function mergeZones(zonesSchedules) {
   const { excludedZones = [], zones = [], ...rest } = zonesSchedules;
   return {
@@ -1066,6 +1137,7 @@ function mergeZones(zonesSchedules) {
   };
 }
 
+// Configuration export: downloads the current settings as a portable configuration archive.
 function downloadConfig() {
   syncAssignedConnections();
   const files = [
@@ -1087,6 +1159,7 @@ function downloadConfig() {
 }
 
 let crcTable;
+// Configuration archive helper: calculates the CRC-32 value required by ZIP file entries.
 function crc32(bytes) {
   if (!crcTable) {
     crcTable = Array.from({ length: 256 }, (_, n) => {
@@ -1101,6 +1174,7 @@ function crc32(bytes) {
 }
 
 // Minimal uncompressed (stored) ZIP archive writer.
+// Configuration archive helper: creates a ZIP byte stream from named file contents.
 function buildZip(entries) {
   const encoder = new TextEncoder();
   const parts = [];
@@ -1143,6 +1217,7 @@ function buildZip(entries) {
 }
 
 // Reads a ZIP archive (stored or deflated entries) into [{ name, text }].
+// Configuration import: extracts supported JSON configuration files from a ZIP archive.
 async function readZip(file) {
   const buffer = await file.arrayBuffer();
   const view = new DataView(buffer);
@@ -1179,6 +1254,7 @@ async function readZip(file) {
 }
 
 // Each BACnet object of the same type (analog/binary value) must have a distinct instance number within its device profile.
+// Configuration validation UI: checks whether device profiles allocate overlapping automatic BACnet instances.
 function findDuplicateInstanceNumbers() {
   const conflicts = [];
   for (const [deviceName, device] of Object.entries(state.config.deviceProfiles || {})) {
@@ -1203,6 +1279,7 @@ function findDuplicateInstanceNumbers() {
   return conflicts;
 }
 
+// Configuration save: validates the edited profiles and schedules before sending them to the application API.
 async function saveConfig() {
   const conflicts = findDuplicateInstanceNumbers();
   if (conflicts.length) {
@@ -1226,6 +1303,7 @@ async function saveConfig() {
   if (warnings.length) showNotice(`${mqttSaved ? "All configuration saved" : "Saved"} with warning:\n${warnings.join("\n")}`, "warning");
 }
 
+// BMS connection editor: finds duplicate connection values that may indicate an unintended duplicate.
 function findDuplicateConnections() {
   const groups = new Map();
   for (const [name, connection] of Object.entries(state.config.connections)) {
@@ -1241,6 +1319,7 @@ function findDuplicateConnections() {
   });
 }
 
+// Application startup: retrieves the server version for display in the page footer.
 async function loadVersion() {
   try {
     const response = await fetch("/api/health");
@@ -1250,6 +1329,7 @@ async function loadVersion() {
   }
 }
 
+// Application startup: loads saved configuration and initializes the configuration editors.
 async function loadConfig() {
   try {
     const response = await fetch("/api/config");
@@ -1269,6 +1349,7 @@ async function loadConfig() {
   render();
 }
 
+// MQTT status UI: displays broker state and enables or disables connection actions.
 function setMqttStatus(status) {
   const connectionState = status.state || "disconnected";
   const labels = { connected: "Connected", connecting: "Connecting", error: "Connection error", disconnected: "Disconnected" };
@@ -1292,6 +1373,7 @@ function setMqttStatus(status) {
   $("#mqtt-disconnect-button").disabled = connectionState === "disconnected";
 }
 
+// MQTT diagnostics UI: appends one formatted service log entry unless the log is paused.
 function appendMqttLog(entry) {
   const log = $("#mqtt-log");
   const row = document.createElement("article");
@@ -1312,6 +1394,7 @@ function appendMqttLog(entry) {
   prependLogRow(log, row, $("#mqtt-log-count"));
 }
 
+// MQTT diagnostics UI: creates a button that copies the associated log text to the clipboard.
 function createCopyButton(getText) {
   const button = document.createElement("button");
   button.type = "button";
@@ -1331,6 +1414,7 @@ function createCopyButton(getText) {
   return button;
 }
 
+// MQTT diagnostics UI: appends one raw broker message unless raw-message display is paused.
 function appendRawMqttMessage(entry) {
   const log = $("#mqtt-raw-log");
   const row = document.createElement("article");
@@ -1351,6 +1435,7 @@ function appendRawMqttMessage(entry) {
   prependLogRow(log, row, $("#mqtt-raw-count"));
 }
 
+// MQTT diagnostics UI: inserts the newest log row and trims the displayed history.
 function prependLogRow(log, row, counter) {
   log.querySelector(".mqtt-log-empty")?.remove();
   log.prepend(row);
@@ -1359,12 +1444,14 @@ function prependLogRow(log, row, counter) {
   log.scrollTop = 0;
 }
 
+// MQTT diagnostics UI: clears one displayed MQTT log or raw-message list.
 function clearLog(logId) {
   const log = $(`#${logId}`);
   log.innerHTML = `<div class="mqtt-log-empty">${logId === "mqtt-raw-log" ? "No raw MQTT messages yet." : "No activity yet."}</div>`;
   $(logId === "mqtt-raw-log" ? "#mqtt-raw-count" : "#mqtt-log-count").textContent = "0 entries";
 }
 
+// MQTT settings editor: collects broker credentials and network-server settings from the form.
 function readMqttForm() {
   const form = {};
   for (const field of MQTT_TEXT_FIELDS) form[field] = $(`#mqtt-${field}`).value;
@@ -1372,6 +1459,7 @@ function readMqttForm() {
   return form;
 }
 
+// MQTT settings editor: saves broker and network-server settings through the application API.
 async function saveMqttSettings() {
   try {
     const response = await fetch("/api/mqtt/settings", {
@@ -1385,6 +1473,7 @@ async function saveMqttSettings() {
   }
 }
 
+// MQTT settings editor: loads saved broker settings and updates related form defaults.
 async function loadMqttSettings() {
   try {
     const response = await fetch("/api/mqtt/settings");
@@ -1405,6 +1494,7 @@ async function loadMqttSettings() {
   }
 }
 
+// MQTT connection UI: validates and saves settings before asking the service to connect.
 async function connectMqtt() {
   const settings = readMqttForm();
   await saveMqttSettings();
@@ -1423,6 +1513,7 @@ async function connectMqtt() {
   }
 }
 
+// MQTT connection UI: asks the service to disconnect from the broker and refreshes the status.
 async function disconnectMqtt() {
   try {
     const response = await fetch("/api/mqtt/disconnect", { method: "POST" });
@@ -1433,6 +1524,7 @@ async function disconnectMqtt() {
   }
 }
 
+// MQTT diagnostics UI: polls broker status, logs, and raw messages since the previous refresh.
 async function refreshMqtt() {
   try {
     const [statusResponse, logsResponse, rawResponse] = await Promise.all([
@@ -1653,6 +1745,7 @@ document.addEventListener("click", async (event) => {
       case "add-device": {
         const base = "loraDevice";
         let index = 0;
+        // Configuration archive helper: converts a zero-based ZIP entry index into its base-26 name.
         const letters = (n) => (n >= 26 ? letters(Math.floor(n / 26) - 1) : "") + String.fromCharCode(65 + (n % 26));
         while (Object.hasOwn(state.config.deviceProfiles, `${base}${letters(index)}`)) index += 1;
         const name = `${base}${letters(index)}`;

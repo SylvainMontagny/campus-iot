@@ -9,10 +9,12 @@ const DOWNLINK_STRATEGIES = new Set([
   "onChangeOfThisValueWithinRange"
 ]);
 
+// Configuration validation: creates a field-specific error returned to the UI and API.
 function issue(message, path) {
   return { message, path };
 }
 
+// Configuration validation: checks device profiles, BMS connections, BACnet mappings, and downlink settings before saving.
 function validateConfig(config) {
   const errors = [];
   if (!config || typeof config !== "object" || Array.isArray(config)) {

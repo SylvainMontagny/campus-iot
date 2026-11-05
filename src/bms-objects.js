@@ -18,11 +18,12 @@ const WANTED_TYPES = { analogvalue: "analogValue", binaryvalue: "binaryValue", s
 const SCHEDULE_REST_PROPERTIES = ["objectName", "presentValue", "exceptionSchedule"];
 const VALUE_REST_PROPERTIES = ["objectName", "presentValue"];
 
+// BMS object listing: maps controller object type spellings to the types shown by the UI.
 function canonicalType(type) {
   return WANTED_TYPES[String(type).replace(/[^a-z]/gi, "").toLowerCase()] ?? null;
 }
 
-// Flattens decoded BACnet / JSON structures into readable text (times, dates, values).
+// BMS object listing: flattens decoded BACnet and REST values for display in the UI.
 function toText(value) {
   if (value === undefined || value === null) return "";
   if (value instanceof Date) return `${String(value.getHours()).padStart(2, "0")}:${String(value.getMinutes()).padStart(2, "0")}`;
@@ -39,9 +40,12 @@ function toText(value) {
 }
 
 const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+// BMS object listing: pads schedule date/time fields for the UI.
 const pad = (number) => String(number).padStart(2, "0");
+// BMS object listing: unwraps a decoded BACnet value while retaining ordinary JSON values.
 const inner = (item) => (item && typeof item === "object" && !(item instanceof Date) && "value" in item ? item.value : item);
 
+// BMS object listing: formats one schedule exception date for the BMS objects table.
 function formatEventDate(item) {
   const date = inner(item);
   if (date instanceof Date) {
@@ -52,18 +56,20 @@ function formatEventDate(item) {
   return toText(date);
 }
 
+// BMS object listing: formats one schedule exception time for the BMS objects table.
 function formatEventTime(item) {
   const time = inner(item);
   if (time instanceof Date) return `${pad(time.getHours())}:${pad(time.getMinutes())}`;
   return toText(time);
 }
 
+// BMS object listing: formats one schedule exception value for the BMS objects table.
 function formatEventValue(item) {
   const value = inner(item);
   return value === null || value === undefined ? "null" : toText(value);
 }
 
-// One line per exception event: "date: time → value, time → value (priority n)".
+// BMS object listing: formats a controller's exception schedule into one readable line per event.
 function formatExceptionSchedule(entries) {
   const list = Array.isArray(entries) && entries.length === 1 && Array.isArray(entries[0]?.value) ? entries[0].value : entries;
   if (!Array.isArray(list)) return toText(list);
@@ -74,7 +80,9 @@ function formatExceptionSchedule(entries) {
   }).join("\n");
 }
 
+// BMS object listing: separates schedule objects from analog and binary values for the API response.
 function splitObjects(objects) {
+  // BMS object listing: sorts one object type by instance number before formatting its rows.
   const byType = (type) => objects.filter((object) => object.type === type).sort((a, b) => a.instance - b.instance);
   return {
     values: [...byType("analogValue"), ...byType("binaryValue")].map(({ type, instance, name, presentValue }) => ({ type, instance, name, presentValue })),
@@ -82,13 +90,14 @@ function splitObjects(objects) {
   };
 }
 
+// Distech REST adapter: creates the Basic authorization header for BMS object requests.
 function basicAuthorization(connection) {
   return `Basic ${Buffer.from(`${connection.bacnetLogin ?? ""}:${connection.bacnetPassword ?? ""}`).toString("base64")}`;
 }
 
 // ---- REST API (Distech Controls v2) ----
 
-// The object list may come back as {type, instance} entries or as "type,instance" strings.
+// Distech REST adapter: normalizes object identifiers returned as objects or strings.
 function parseRestObjectId(entry) {
   if (entry && typeof entry === "object") {
     const instance = Number(entry.instance ?? entry.instanceNumber);
@@ -99,6 +108,7 @@ function parseRestObjectId(entry) {
   return match ? { type: match[1], instance: Number(match[2]) } : null;
 }
 
+// Distech REST adapter: sends an authenticated request to the controller's BACnet REST API.
 function restRequest(connection, method, path, data, timeout) {
   return httpClient.request({
     method,
@@ -109,12 +119,14 @@ function restRequest(connection, method, path, data, timeout) {
   });
 }
 
+// Distech REST adapter: converts an HTTP response into a message for BMS object operations.
 function restFailure(response) {
   if (response.status === 401 || response.status === 403) return "The BMS rejected the credentials. Check login and password";
   if (response.status === 404) return "The BMS does not provide this REST service (HTTP 404)";
   return `The BMS answered HTTP ${response.status}`;
 }
 
+// Distech REST adapter: retrieves object identifiers using supported object-list endpoint variants.
 async function readRestObjectList(connection, { client = restRequestFor, timeout }) {
   const attempts = [
     () => client(connection, "POST", "/services/bacnet/local/objects/read-property-multiple",
@@ -143,20 +155,23 @@ async function readRestObjectList(connection, { client = restRequestFor, timeout
   throw new Error(lastFailure);
 }
 
+// Distech REST adapter: default request function passed to discovery helpers and injectable in tests.
 function restRequestFor(connection, method, path, data, timeout) {
   return restRequest(connection, method, path, data, timeout);
 }
 
+// Distech REST adapter: parses response text without failing object discovery on a non-JSON response.
 function safeJson(text) {
   try { return JSON.parse(text); } catch { return null; }
 }
 
-// Some firmwares return the list as one string: "[device 1109, analog-value 10, schedule 0]".
+// Distech REST adapter: splits firmware object-list responses encoded as a bracketed string.
 function splitListString(text) {
   const match = /^\s*\[(.*)\]\s*$/s.exec(text);
   return match ? match[1].split(",").map((part) => part.trim()).filter(Boolean) : null;
 }
 
+// Distech REST adapter: extracts object-list entries from the response shapes used by controller firmware.
 function collectEntries(data) {
   if (Array.isArray(data)) {
     return data.flatMap((item) => {
@@ -175,9 +190,11 @@ function collectEntries(data) {
   return [];
 }
 
+// Distech REST adapter: reads names and values for discovered objects in bounded API batches.
 async function enrichRestObjects(connection, objects, { client, timeout }) {
   const byKey = new Map(objects.map((object) => [`${object.restType}:${object.instance}`, object]));
   const canonicalKey = new Map(objects.map((object) => [`${object.type}:${object.instance}`, object]));
+  // Distech REST adapter: selects schedule-specific properties or the common value-object properties.
   const propertiesOf = (object) => (object.type === "schedule" ? SCHEDULE_REST_PROPERTIES : VALUE_REST_PROPERTIES);
   for (let start = 0; start < objects.length; start += BATCH_SIZE) {
     const batch = objects.slice(start, start + BATCH_SIZE);
@@ -200,10 +217,12 @@ async function enrichRestObjects(connection, objects, { client, timeout }) {
   }
 }
 
+// BMS object listing: creates the common row shape used for both controller protocols.
 function blankObject(type, instance, extra = {}) {
   return { type, instance, name: "", presentValue: "", exceptionSchedule: "", ...extra };
 }
 
+// Distech REST adapter: lists supported controller objects and enriches them with readable properties.
 async function listRestObjects(connection, options = {}) {
   if (connection.model !== "distechControlsV2") throw new Error(`Unknown controller model: ${connection.model}`);
   const client = options.client ?? restRequestFor;
@@ -217,13 +236,16 @@ async function listRestObjects(connection, options = {}) {
 
 // ---- Native BACnet ----
 
+// Native BACnet adapter: extracts the display value from a decoded BACnet property.
 function valueOf(property) {
   return toText(property?.value);
 }
 
+// Native BACnet adapter: reads the device object list, falling back to indexed reads for large lists.
 async function readNativeObjectList(client, address, bacnet) {
   const { ObjectType, PropertyIdentifier } = bacnet;
   const deviceId = { type: ObjectType.DEVICE, instance: DEVICE_WILDCARD_INSTANCE };
+  // Native BACnet adapter: extracts the object identifier from one decoded object-list entry.
   const toId = (item) => ({ type: item.value.type, instance: item.value.instance });
   try {
     const all = await client.readProperty(address, deviceId, PropertyIdentifier.OBJECT_LIST);
@@ -242,10 +264,12 @@ async function readNativeObjectList(client, address, bacnet) {
   }
 }
 
+// Native BACnet adapter: normalizes library enum names before filtering supported object types.
 function camelType(name) {
   return String(name).replace(/\(\d+\)$/, "").toLowerCase().replace(/_([a-z])/g, (_match, letter) => letter.toUpperCase());
 }
 
+// Native BACnet adapter: reads supported object identifiers and their display properties from the controller.
 async function listNativeObjects(connection, { client, timeout = TIMEOUT_MS, bacnet = require("@bacnet-js/client") } = {}) {
   const { ObjectType, PropertyIdentifier, getEnumName } = bacnet;
   const ownedClient = client ?? getClient(timeout);
@@ -260,9 +284,11 @@ async function listNativeObjects(connection, { client, timeout = TIMEOUT_MS, bac
     .map((id) => ({ id, type: canonicalType(camelType(getEnumName(ObjectType, id.type) ?? id.type)) }))
     .filter((entry) => entry.type)
     .map((entry) => blankObject(entry.type, entry.id.instance, { typeId: entry.id.type }));
+  // Native BACnet adapter: selects the properties needed to display each object category.
   const propertyIds = (object) => (object.type === "schedule"
     ? [PropertyIdentifier.OBJECT_NAME, PropertyIdentifier.PRESENT_VALUE, PropertyIdentifier.EXCEPTION_SCHEDULE]
     : [PropertyIdentifier.OBJECT_NAME, PropertyIdentifier.PRESENT_VALUE]);
+  // Native BACnet adapter: stores a decoded property in its common display row.
   const store = (object, id, values) => {
     if (id === PropertyIdentifier.OBJECT_NAME) object.name = toText(values);
     else if (id === PropertyIdentifier.PRESENT_VALUE) object.presentValue = toText(values);
@@ -298,6 +324,7 @@ async function listNativeObjects(connection, { client, timeout = TIMEOUT_MS, bac
 }
 
 
+// BMS object API: dispatches object discovery to the connection's native BACnet or REST implementation.
 async function listBmsObjects(connection, options = {}) {
   if (!connection?.ipAddress) throw new Error("BMS IP address is required");
   if (connection.protocol === "restAPIBacnet") return listRestObjects(connection, options.rest);
@@ -307,7 +334,7 @@ async function listBmsObjects(connection, options = {}) {
 
 const REST_DELETE_SERVICES = { analogValue: "analog-values", binaryValue: "binary-values", schedule: "schedules" };
 
-/** Deletes objects ({type, instance}) on the BMS; returns { deleted, failed: [{type, instance, error}] }. */
+/** BMS object API: deletes selected controller objects and reports each success or failure. */
 async function deleteBmsObjects(connection, objects, options = {}) {
   if (!connection?.ipAddress) throw new Error("BMS IP address is required");
   if (!Array.isArray(objects) || !objects.length) throw new Error("No object to delete");
@@ -315,6 +342,7 @@ async function deleteBmsObjects(connection, objects, options = {}) {
   if (targets.some((target) => !target.type || !Number.isInteger(target.instance))) throw new Error("Invalid object to delete");
   const failed = [];
   let deleted = 0;
+  // BMS object API: records a per-object deletion failure without stopping later deletions.
   const record = (target, error) => failed.push({ ...target, error });
 
   if (connection.protocol === "restAPIBacnet") {
@@ -347,7 +375,7 @@ async function deleteBmsObjects(connection, objects, options = {}) {
   return { deleted, failed };
 }
 
-/** Reads the present value of the given schedule instances; returns Map(instance -> text). Unreadable schedules are left out. */
+/** Zones & Schedules UI: reads present values for schedule instances on the selected controller. */
 async function readSchedulePresentValues(connection, instances, options = {}) {
   const values = new Map();
   if (!connection?.ipAddress || !instances.length) return values;

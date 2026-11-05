@@ -4,9 +4,10 @@ const ical = require("node-ical");
 const { validateZonesSchedules, resolveZones, SCHEDULE_EVENTS } = require("./zones-config");
 const { createNativeScheduleDriver } = require("./bacnet-schedule");
 
-// unref so a pending wait never keeps the process alive.
+// Schedule polling: waits without keeping the Node.js process alive.
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms).unref());
 
+// Schedule logging: formats polling intervals for startup messages.
 function formatDuration(seconds) {
   let remaining = Math.floor(seconds);
   const parts = [];
@@ -18,6 +19,7 @@ function formatDuration(seconds) {
   return parts.join(" ") || "0 secs";
 }
 
+// Distech schedule adapter: creates the authenticated HTTP client for schedule operations.
 function createApi(connection) {
   return axios.create({
     baseURL: `https://${connection.ipAddress}/api/rest/v2`,
@@ -31,13 +33,14 @@ function createApi(connection) {
   });
 }
 
+// Distech schedule adapter: sends a set of REST operations as one controller batch.
 async function batch(api, requests) {
   if (!requests.length) return [];
   const numbered = requests.map((request, index) => ({ id: String(index + 1), ...request }));
   return (await api.post("/batch", { requests: numbered })).data;
 }
 
-/** Date parts as seen in a given time zone. */
+/** iCalendar conversion: returns date and time fields as seen in a zone's configured time zone. */
 function tzParts(date, timeZone) {
   const formatter = new Intl.DateTimeFormat("en-CA", {
     timeZone, hourCycle: "h23",
@@ -52,9 +55,10 @@ function tzParts(date, timeZone) {
   };
 }
 
+// iCalendar conversion: unwraps calendar text properties returned as value objects.
 const text = (value) => (value && typeof value === "object" ? String(value.val ?? "") : String(value ?? ""));
 
-/** Fetch the zone iCal and return plain {start, end, summary, description} within the preview window. */
+/** iCalendar input: fetches a zone calendar and returns its events inside the preview window. */
 async function fetchEvents(zone) {
   const data = await ical.async.fromURL(zone.url);
   const now = Date.now();
@@ -82,7 +86,7 @@ async function fetchEvents(zone) {
   return out.sort((a, b) => a.start - b.start);
 }
 
-/** Build the "special-events" object for one zone. */
+/** iCalendar conversion: filters, groups, and converts events into BACnet special-event transitions. */
 function buildSpecialEvents(zone, rawEvents, warn = () => {}) {
   const tz = zone.timeZone;
   let events = rawEvents.filter((event) => !zone.eventsToDiscard.some((name) => event.description.includes(name)));
@@ -157,11 +161,13 @@ function buildSpecialEvents(zone, rawEvents, warn = () => {}) {
   return special;
 }
 
+// Zones & Schedules runtime: coordinates validation, controller setup, and recurring iCalendar updates.
 function createIcalScheduleService({ log = () => {} } = {}) {
   let generation = 0;
-  // Configurations saved before the log options existed keep every message.
+  // Schedule logging: preserves all messages for configurations saved before per-category options existed.
   const logEnabled = (conf, option) => conf.logs?.[option] !== false;
 
+  // Distech schedule adapter: creates the schedule objects assigned to iCalendar-managed zones.
   async function setupSchedules(api, zones, conf) {
     const [min, max] = conf.scheduleInstanceRange;
     const deletions = [];
@@ -183,6 +189,7 @@ function createIcalScheduleService({ log = () => {} } = {}) {
     })));
   }
 
+  // Distech schedule adapter: creates the analog values used to carry current schedule outputs.
   async function setupScheduleAV(api, zones, conf) {
     const [min, max] = conf.scheduleInstanceRange;
     const offset = conf.scheduleAVInstanceOffset;
@@ -205,6 +212,7 @@ function createIcalScheduleService({ log = () => {} } = {}) {
     })));
   }
 
+  // Distech schedule adapter: binds created schedule outputs to the device analog values in each zone.
   async function setupBindings(api, zones, conf, deviceProfiles) {
     const existing = (await api.get("/services/events/bindings")).data;
     if (existing && typeof existing === "object") {
@@ -242,12 +250,14 @@ function createIcalScheduleService({ log = () => {} } = {}) {
     await batch(api, requests);
   }
 
+  // Zones & Schedules runtime: fetches and converts one zone's calendar before updating its controller schedule.
   async function updateZoneSchedule(driver, zone) {
     const special = buildSpecialEvents(zone, await fetchEvents(zone), (message) => log("warning", message));
     // Schedules are only recreated for zones that own them; events added to an existing schedule never create it.
     await driver.updateZoneSchedule(zone, special, { recreate: zone.configuration !== SCHEDULE_EVENTS });
   }
 
+  // Zones & Schedules runtime: updates each active zone independently and logs per-zone failures.
   async function updateAllSchedules(driver, zones, label, active, conf) {
     if (logEnabled(conf, "eventsAddedInSchedules")) log("info", `${label}: creating events for ${zones.length} zones (${zones.map((zone) => zone.scheduleName).join(", ")})...`);
     const startedAt = Date.now();
@@ -263,6 +273,7 @@ function createIcalScheduleService({ log = () => {} } = {}) {
     if (logEnabled(conf, "eventTimeCreation")) log("info", `${label}: ${zones.length} zones processed in ${(Date.now() - startedAt) / 1000} s`);
   }
 
+  // Distech schedule adapter: reads schedule present values and mirrors them to the schedule output analog values.
   async function updateScheduleAV(api, zones, conf, label) {
     const offset = conf.scheduleAVInstanceOffset;
     if (logEnabled(conf, "scheduleAVUpdate")) log("info", `${label}: Updating scheduleAV...`);
@@ -293,7 +304,7 @@ function createIcalScheduleService({ log = () => {} } = {}) {
     }
   }
 
-  /** Run fn now and then every `seconds`, never overlapping, until the configuration is replaced. */
+  /** Schedule polling: runs a task immediately and then serially until its configuration is replaced. */
   function loop(name, seconds, active, fn) {
     (async () => {
       while (active()) {
@@ -307,6 +318,7 @@ function createIcalScheduleService({ log = () => {} } = {}) {
     })();
   }
 
+  // Distech schedule adapter: exposes REST operations in the common driver interface.
   function createRestDriver(api) {
     return {
       setupSchedules: (zones, conf) => setupSchedules(api, zones, conf),
@@ -314,6 +326,7 @@ function createIcalScheduleService({ log = () => {} } = {}) {
       setupBindings: (zones, conf, deviceProfiles) => setupBindings(api, zones, conf, deviceProfiles),
       updateScheduleAV: (zones, conf, label) => updateScheduleAV(api, zones, conf, label),
       updateZoneSchedule: async (zone, special, { recreate = false } = {}) => {
+        // Distech schedule adapter: writes the converted schedule and recreates it once if the BMS reports 404.
         const write = () => api.post(`/services/bacnet/local/objects/schedules/${zone.scheduleID}`, {
           "special-events": special,
           "weekly-schedule": zone.weekly,
@@ -334,16 +347,17 @@ function createIcalScheduleService({ log = () => {} } = {}) {
     };
   }
 
-  // The BMS protocol of the connection decides how every BMS action is carried out.
+  // Schedule adapter selection: creates the driver matching the BMS connection protocol.
   function createDriver(connection, deviceProfiles) {
     return connection.protocol === "bacnet"
       ? createNativeScheduleDriver(connection, { log, deviceProfiles })
       : createRestDriver(createApi(connection));
   }
 
-  /** Stops any running loops, then starts the schedule synchronisation for the given configuration. */
+  /** Zones & Schedules runtime: stops prior loops and starts schedule setup and synchronization for a configuration. */
   async function start({ icalToScheduleConf: conf, scheduleEventsConf, zones: configuredZones, deviceProfiles, connections }) {
     const run = ++generation;
+    // Schedule polling: identifies callbacks belonging to the current configuration generation.
     const active = () => run === generation;
     const data = { icalToScheduleConf: conf, scheduleEventsConf, zones: configuredZones };
 
@@ -385,6 +399,7 @@ function createIcalScheduleService({ log = () => {} } = {}) {
       return;
     }
 
+    // Schedule polling: selects the configured update interval for a zone group.
     const updateEvery = (group) => (group.eventsOnly ? data.scheduleEventsConf : conf).timeBetweenScheduleUpdate;
     if ([...groups.values()].some((group) => !group.eventsOnly && group.driver.updateScheduleAV)) {
       log("info", `Ical events will be updated every ${formatDuration(conf.timeBetweenScheduleUpdate)}`);
@@ -407,6 +422,7 @@ function createIcalScheduleService({ log = () => {} } = {}) {
     }
   }
 
+  // Zones & Schedules runtime: invalidates active polling loops without blocking their current request.
   function stop() {
     generation++;
   }

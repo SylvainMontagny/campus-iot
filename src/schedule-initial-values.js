@@ -2,6 +2,7 @@ const { resolveZones, ICAL_TO_SCHEDULE } = require("./zones-config");
 const { readSchedulePresentValues } = require("./bms-objects");
 
 /**
+ * Downlink initialization: gets a zone schedule's current value for each mapped device object it controls.
  * Initial values of the downlink objects of a device that are controlled by a zone of the iCal
  * configuration: the present value of the zone's schedule on the device's BMS.
  * Returns { objectKey: value }; objects that are not controlled, or whose schedule cannot be read, are left out
