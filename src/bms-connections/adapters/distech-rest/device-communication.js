@@ -204,10 +204,6 @@ async function processRestApiBacnet(device, { httpClient = defaultHttpClient, pr
     logDeviceObject(log, device, "downlink");
   }
 
-  // With downlink objects, TX time is logged once the downlink has been prepared.
-  if (!objects.some((object) => object.dataDirection === "downlink")) {
-    log("info", `${device.identity.deviceName} (${protocolLabel(device)}): TX time = ${Date.now() - device.transmitTime}ms`, undefined, "txTime");
-  }
   return { handled: true, ok: true };
 }
 

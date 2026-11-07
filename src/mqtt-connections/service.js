@@ -24,12 +24,13 @@ function createMqttService({ getDeviceProfiles, getScheduleValues, onLog = () =>
   async function sendDownlink(device, deviceLog) {
     const name = device.identity.deviceName;
     const message = prepareDownlink(device, previousValues, deviceLog);
-    if (!message) return;
-    try {
-      await publish(message.topic, message.payload);
-    } catch (error) {
-      addLog("error", `${name}: Downlink publication failed: ${error.message}`);
-      return;
+    if (message) {
+      try {
+        await publish(message.topic, message.payload);
+      } catch (error) {
+        addLog("error", `${name}: Downlink publication failed: ${error.message}`);
+        return;
+      }
     }
     deviceLog("info", `${name} (${protocolLabel(device)}): TX time = ${Date.now() - device.transmitTime}ms`, undefined, "txTime");
   }

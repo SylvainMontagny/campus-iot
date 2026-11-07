@@ -189,6 +189,43 @@ test("subscribes on connect and logs mapped output and legacy errors", async () 
   assert.equal(service.disconnect().state, "disconnected");
 });
 
+test("logs one transmit time when no downlink is scheduled for either BMS protocol", async () => {
+  for (const protocol of ["bacnet", "restAPIBacnet"]) {
+    const fakeClient = new EventEmitter();
+    fakeClient.subscribe = (_topic, callback) => callback(null);
+    fakeClient.end = () => {};
+    const deviceProfiles = makeDeviceProfiles();
+    deviceProfiles.sensor.controller = { protocol, debug: ["txTime", "down"] };
+    deviceProfiles.sensor.bacnet.objects.setpoint = {
+      dataDirection: "downlink",
+      downlinkStrategy: "compareToUplinkObject",
+      uplinkToCompareWith: "temperature",
+      downlinkPortPriority: "high",
+      downlinkPort: 1,
+      value: 19
+    };
+    const service = createMqttService({
+      getDeviceProfiles: async () => deviceProfiles,
+      clientFactory: () => fakeClient,
+      bacnetHandler: async () => ({ ok: true }),
+      restApiBacnetHandler: async () => ({ ok: true })
+    });
+
+    service.connect({ server: "broker.local", port: 1883, topic: "#" });
+    fakeClient.emit("connect");
+    fakeClient.emit("message", "sensor/up", Buffer.from(JSON.stringify({
+      end_device_ids: { device_id: "sensor-1", dev_eui: "A1B2" },
+      uplink_message: { decoded_payload: { decoded: { temperature: 19 } } }
+    })));
+    await new Promise((resolve) => setImmediate(resolve));
+
+    const messages = service.getLogs().map((entry) => entry.message);
+    assert.equal(messages.filter((message) => message.includes("TX time =")).length, 1, protocol);
+    assert.ok(messages.some((message) => message.includes(": No downlink")), protocol);
+    service.disconnect();
+  }
+});
+
 test("requires broker server, valid port, and topic", () => {
   const service = createMqttService({ getDeviceProfiles: async () => ({}) });
   assert.throws(() => service.connect({ server: "broker.local", port: 0, topic: "#" }), /valid port/);

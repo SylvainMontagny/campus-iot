@@ -215,9 +215,6 @@ async function processBacnet(device, { client, previousValues = {}, timeout = DE
     logDeviceObject(log, device, "downlink");
   }
 
-  if (!hasDownlink) {
-    log("info", `${device.identity.deviceName} (${protocolLabel(device)}): TX time = ${Date.now() - device.transmitTime}ms`, undefined, "txTime");
-  }
   return { handled: true, ok: true };
 }
 
