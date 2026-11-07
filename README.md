@@ -100,13 +100,12 @@ Campus IoT automatically assigns LoRaWAN payloads to BACnet objects based on the
 
 Use the following rules when naming LoRaWAN devices:
   1. **End each device name with a hyphen and a number (NUM).**
-  2. NUM must be greater than 0.
+  2. NUM must be a non-negative whole number (0 is allowed).
 
-Good examples: mclimate-vicki-1, micropelt-mlr003-3, nexelec-flow-54, test-25, myDevice-36, my_Device-69.
+Good examples: mclimate-vicki-0, mclimate-vicki-1, micropelt-mlr003-3, nexelec-flow-54, test-25, myDevice-36, my_Device-69.
 
 Wrong examples: 
 - mclimate-vicki (no number)
-- mclimate-vicki-0 (NUM cannot be 0), 
 - mclimate-vicki-one (not a number at the end),
 - mclimate vicki-1 (contains a space).
 

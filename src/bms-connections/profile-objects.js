@@ -28,7 +28,7 @@ function buildBmsObjectRows({ deviceProfile, definition, connectionName, bmsObje
     const range = (type === "analogValue" ? bacnet.instanceRangeAV : bacnet.instanceRangeBV) ?? 0;
     const entries = object.assignementMode === "manual"
       ? [{ instance: object.instanceNum, deviceNum: undefined }]
-      : Array.from({ length: maxDevNum }, (_, index) => ({ instance: object.instanceNum + offset + range * (index + 1), deviceNum: index + 1 }));
+      : Array.from({ length: maxDevNum + 1 }, (_, index) => ({ instance: object.instanceNum + offset + range * index, deviceNum: index }));
     for (const { instance, deviceNum } of entries) expected.set(`${type}:${instance}`, { objectName, object, deviceNum });
   }
 

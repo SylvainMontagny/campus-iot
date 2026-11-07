@@ -89,6 +89,13 @@ test("a complete zone configuration is valid", () => {
   assert.deepEqual(validateZonesSchedules(makeData(), { deviceProfiles, connections }), []);
 });
 
+test("zone device numbers may include zero but not negative numbers", () => {
+  const data = makeData({ devices: { valve: { deviceNums: [0, 1], AVToBindName: "setpoint" } } });
+  assert.deepEqual(validateZonesSchedules(data, { deviceProfiles, connections }), []);
+  data.zones[0].devices.valve.deviceNums = [-1];
+  assert.match(validateZonesSchedules(data, { deviceProfiles, connections })[0].message, /from 0 to 10/);
+});
+
 test("a missing BMS connection of the devices names the zone in a standalone message", () => {
   const errors = validateZonesSchedules(makeData(), { deviceProfiles, connections: {} });
   const [error] = errors.filter((item) => item.path === "zonesSchedules.zones.0.connectionName");

@@ -36,6 +36,17 @@ function zonesSchedules(deviceNums) {
 
 const build = (connectionName, deviceNums) => buildBmsObjectRows({ deviceProfile: "valve", definition, connectionName, bmsObjects, zonesSchedules: zonesSchedules(deviceNums) });
 
+test("includes device zero objects and their zone binding", () => {
+  const values = [
+    { type: "analogValue", instance: 100, name: "temp-0", presentValue: "21" },
+    { type: "analogValue", instance: 101, name: "setpoint-0", presentValue: "20" },
+    { type: "binaryValue", instance: 202, name: "mode-0", presentValue: "1" }
+  ];
+  const rows = buildBmsObjectRows({ deviceProfile: "valve", definition, connectionName: "bms", bmsObjects: { values, schedules: [{ instance: 0, name: "room1", presentValue: "20" }] }, zonesSchedules: zonesSchedules([0]) });
+  assert.deepEqual(rows.map((row) => row.deviceNum), [0, 0, 0]);
+  assert.deepEqual(rows[1].controlledBy, { scheduleName: "room1", presentValue: "20" });
+});
+
 test("only the BMS objects of the profile are listed, downlink ones with their schedule present value", () => {
   const rows = build("bms", [2]);
   assert.deepEqual(rows.map((row) => [row.type, row.instance, row.name, row.presentValue, row.direction]), [

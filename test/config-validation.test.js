@@ -29,6 +29,33 @@ test("empty default configuration is valid", () => {
   assert.deepEqual(validateConfig(createDefaultConfig()), []);
 });
 
+test("allows a profile containing only device zero", () => {
+  const config = createDefaultConfig();
+  config.deviceProfiles.sensor = configuredDevice();
+  config.deviceProfiles.sensor.identity.maxDevNum = 0;
+  assert.deepEqual(validateConfig(config), []);
+});
+
+test("detects overlap in the device-zero range", () => {
+  const config = createDefaultConfig();
+  config.deviceProfiles.sensor = configuredDevice();
+  config.deviceProfiles.other = configuredDevice();
+  config.deviceProfiles.other.bacnet.offsetAV = 5;
+  config.deviceProfiles.other.bacnet.offsetBV = 200;
+  assert.ok(validateConfig(config).some((error) => error.message.includes("Analog instance ranges overlap")));
+});
+
+test("detects a manual instance in the device-zero range", () => {
+  const config = createDefaultConfig();
+  config.deviceProfiles.sensor = configuredDevice();
+  config.deviceProfiles.manual = configuredDevice();
+  config.deviceProfiles.manual.bacnet.offsetAV = 200;
+  config.deviceProfiles.manual.bacnet.offsetBV = 200;
+  config.deviceProfiles.manual.bacnet.objects.temperature.assignementMode = "manual";
+  config.deviceProfiles.manual.bacnet.objects.temperature.instanceNum = 0;
+  assert.ok(validateConfig(config).some((error) => error.message.includes("overlaps sensor's automatic range")));
+});
+
 test("rejects malformed IPv4 addresses when devices exist", () => {
   const config = createDefaultConfig();
   config.deviceProfiles.sensor = configuredDevice();

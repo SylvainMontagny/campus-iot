@@ -72,12 +72,6 @@ function mapIncomingPacket(topic, rawPayload, deviceProfiles) {
   }
   const deviceProfile = match[1];
   const deviceNumber = Number.parseInt(match[2], 10);
-  if (deviceNumber === 0) {
-    return {
-      error: `Error: Device Num is 0 is not allowed (${deviceName})`,
-      details: { errorType: "deviceName", value: deviceName }
-    };
-  }
   if (!deviceProfiles[deviceProfile]) {
     return {
       error: `Error: Device Profile does not belong to the "LoRaWAN to BACnet" List (${deviceName})`,

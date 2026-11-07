@@ -331,3 +331,13 @@ button { cursor: pointer; }
 .bms-sort.is-active span, .bms-sort:hover span { opacity: 1; }
 .button-danger { color: #fff; background: #c0392b; border-color: #c0392b; }
 .button-danger:hover:not(:disabled) { background: #a93226; }
+
+.instance-range-preview { margin-top: 20px; }
+.instance-range-preview h3 { margin: 0 0 12px; text-align: center; font-size: 14px; }
+.instance-range-section { min-width: 0; margin-bottom: 16px; overflow-x: auto; }
+.instance-range-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; border: 1px solid #d9dee3; border-radius: 3px; }
+.instance-range-table th, .instance-range-table td { padding: 8px 10px; text-align: left; vertical-align: middle; border-bottom: 1px solid #e8ebee; overflow-wrap: anywhere; }
+.instance-range-table th { background: #f3f5f7; font-weight: 700; color: #526259; font-size: 11px; }
+.instance-range-table td { color: #35443b; font-size: 12px; }
+.instance-range-table tr:last-child td { border-bottom: 0; }
+.instance-range-number { width: 65px; padding: 3px; border: 1px solid #d8e1da; border-radius: 2px; font-family: var(--mono); font-size: 12px; }

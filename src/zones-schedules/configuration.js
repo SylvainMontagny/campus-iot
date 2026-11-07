@@ -216,8 +216,8 @@ function validateZonesSchedules(data, { deviceProfiles = {}, connections = {} } 
 
       const numbers = device?.deviceNums;
       const maxDevNum = definition.identity?.maxDevNum;
-      if (!Array.isArray(numbers) || !numbers.length || !numbers.every((n) => Number.isInteger(n) && n >= 1 && n <= maxDevNum)) {
-        errors.push(issue(`Device numbers must be whole numbers from 1 to ${maxDevNum}`, `${devicePath}.deviceNums`));
+      if (!Array.isArray(numbers) || !numbers.length || !numbers.every((n) => Number.isInteger(n) && n >= 0 && n <= maxDevNum)) {
+        errors.push(issue(`Device numbers must be whole numbers from 0 to ${maxDevNum}`, `${devicePath}.deviceNums`));
         continue;
       }
       usedNumbers[profileName] = (usedNumbers[profileName] || []).concat(numbers);

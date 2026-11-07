@@ -63,6 +63,30 @@ test("processes a profile configured for The Things Stack (ttn) like tts", () =>
   assert.equal(result.device.mqtt.topicDownlink, "v3/app@ttn/devices/sensor-2/down");
 });
 
+test("maps device number zero for each network server and both BACnet object types", () => {
+  const profiles = makeDeviceProfiles();
+  profiles.sensor.bacnet.objects.temperature.instanceNum = 0;
+  profiles.sensor.bacnet.objects.alarm = {
+    lorawanPayloadName: "decoded.alarm", dataDirection: "uplink", assignementMode: "auto",
+    instanceNum: 0, objectType: "binaryValue", value: 0
+  };
+  const decoded = { decoded: { temperature: 21, alarm: 1 } };
+  const packets = [
+    ["tts", { end_device_ids: { device_id: "sensor-0" }, uplink_message: { decoded_payload: decoded } }],
+    ["chirpstack", { deviceInfo: { deviceName: "sensor-0" }, object: decoded }],
+    ["actility", { DevEUI_uplink: { CustomerData: { name: "sensor-0" }, payload: decoded } }]
+  ];
+  for (const [network, packet] of packets) {
+    profiles.sensor.lorawan.networkServer = network;
+    const result = mapIncomingPacket("topic/up", packet, profiles);
+    assert.equal(result.error, undefined);
+    assert.equal(result.device.identity.deviceNum, 0);
+    assert.equal(result.device.bacnet.objects.temperature.instanceNum, 100);
+    assert.equal(result.device.bacnet.objects.alarm.instanceNum, 200);
+    assert.equal(result.device.bacnet.objects.temperature.value, 21);
+  }
+});
+
 test("maps ChirpStack and Actility uplinks and ignores non-uplink notifications", () => {
   const deviceProfiles = makeDeviceProfiles();
   deviceProfiles.sensor.lorawan.networkServer = "chirpstack";
@@ -113,8 +137,6 @@ test("reports device and payload failures", () => {
 
   assert.equal(mapIncomingPacket("topic/up", payload("sensor"), deviceProfiles).error,
     "Error: Device Name (sensor) does not respect *xxx - num* format");
-  assert.equal(mapIncomingPacket("topic/up", payload("sensor-0"), deviceProfiles).error,
-    "Error: Device Num is 0 is not allowed (sensor-0)");
   assert.equal(mapIncomingPacket("topic/up", payload("unknown-1"), deviceProfiles).error,
     'Error: Device Profile does not belong to the "LoRaWAN to BACnet" List (unknown-1)');
   assert.equal(mapIncomingPacket("topic/up", payload("sensor-5"), deviceProfiles).error,

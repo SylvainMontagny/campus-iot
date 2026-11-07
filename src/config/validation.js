@@ -53,8 +53,8 @@ function validateConfig(config) {
       continue;
     }
 
-    if (!Number.isInteger(device.identity?.maxDevNum) || device.identity.maxDevNum < 1) {
-      errors.push(issue("Maximum device number must be a positive whole number", `${devicePath}.identity.maxDevNum`));
+    if (!Number.isInteger(device.identity?.maxDevNum) || device.identity.maxDevNum < 0) {
+      errors.push(issue("Maximum device number must be a non-negative whole number", `${devicePath}.identity.maxDevNum`));
     }
     if (!IPV4_PATTERN.test(device.controller?.ipAddress || "")) {
       errors.push(issue("Enter a valid BMS IPv4 address", `${devicePath}.controller.ipAddress`));
@@ -129,8 +129,8 @@ function validateConfig(config) {
       const offset = bacnet[`offset${kind}`];
       const range = bacnet[`instanceRange${kind}`];
       const maxDevices = device?.identity?.maxDevNum;
-      return { name, start: offset + range, end: offset + range * (maxDevices + 1) };
-    }).filter((item) => Number.isFinite(item.start) && Number.isFinite(item.end));
+      return { name, start: offset, end: offset + range * (maxDevices + 1) };
+    }).filter((item) => Number.isFinite(item.start) && Number.isFinite(item.end) && item.end > item.start);
 
     allocations.sort((left, right) => left.start - right.start);
     for (let index = 1; index < allocations.length; index += 1) {

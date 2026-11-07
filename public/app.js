@@ -8,6 +8,7 @@
   expandedObjects: {},
   expandedAdvanced: {},
   expandedZoneDevices: {},
+  instanceRangeDeviceNums: {},
   noticeTimer: null,
   mqttLogId: 0,
   mqttRawId: 0,
@@ -161,7 +162,7 @@ function makeDevice(name, connectionName) {
     identity: { maxDevNum: 10 },
     controller: { debug: ["all"], connectionName: connectionName || "" },
     lorawan: { flushDownlinkQueue: false, class: "A" },
-    bacnet: { offsetAV: 0, offsetBV: 0, instanceRangeAV: 10, instanceRangeBV: 10, objects: {} },
+    bacnet: { offsetAV: 0, offsetBV: 0, instanceRangeAV: 10, instanceRangeBV: 0, objects: {} },
     mqtt: { topicDownlink: {} }
   };
   state.config.deviceConnections[name] = connectionName || "";
@@ -213,6 +214,55 @@ function selectField(label, path, value, options, wide = false) {
 // Configuration editor: renders a checkbox for a boolean setting.
 function checkbox(label, checked, key) {
   return `<label class="check-field"><input type="checkbox" data-debug="${key}"${checked ? " checked" : ""}><span>${escapeHtml(label)}</span></label>`;
+}
+
+function instanceRangeText(offset, range, deviceNum) {
+  if (range === 0) return "No object available";
+  if (!Number.isSafeInteger(deviceNum) || deviceNum < 0) return "Enter a non-negative whole device number";
+  if (!Number.isSafeInteger(offset) || offset < 0 || !Number.isSafeInteger(range) || range < 0) return "Enter a valid offset and object count";
+  const start = offset + range * deviceNum;
+  const end = start + range - 1;
+  if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end)) return "Instance range is too large";
+  return `From ${start} to ${end}`;
+}
+
+function instanceRangeTablesHtml(deviceName) {
+  const customNum = state.instanceRangeDeviceNums[deviceName] ?? "3";
+  const rows = [0, 1, 2, "custom"].map((num) => {
+    const name = num === "custom"
+      ? `${escapeHtml(deviceName)}-<input class="instance-range-number" type="number" min="0" step="1" value="${escapeHtml(customNum)}" data-instance-device-num aria-label="Custom device number">`
+      : escapeHtml(`${deviceName}-${num}`);
+    return `<tr><td>${name}</td><td data-instance-range="AV" data-instance-num="${num}"></td><td data-instance-range="BV" data-instance-num="${num}"></td></tr>`;
+  }).join("");
+  return `<section class="instance-range-preview" aria-labelledby="instance-range-heading">
+    <h3 id="instance-range-heading">Instance range computation: test zone</h3>
+    <div class="instance-range-section"><table class="instance-range-table"><thead><tr><th scope="col">LoRaWAN device name</th><th scope="col">AV instance range</th><th scope="col">BV instance range</th></tr></thead><tbody>${rows}</tbody></table></div>
+  </section>`;
+}
+
+function updateInstanceRangeTables() {
+  const panel = $("#device-config-panel");
+  if (!panel) return;
+  const customValue = state.instanceRangeDeviceNums[state.selectedDevice] ?? "3";
+  const numberOf = (value) => value === "" || value == null ? NaN : Number(value);
+  const maxDeviceNum = numberOf(panel.querySelector('[data-path="identity.maxDevNum"]').value);
+  panel.querySelectorAll("[data-instance-device-num]").forEach((input) => {
+    if (input.value !== customValue) input.value = customValue;
+  });
+  panel.querySelectorAll("[data-instance-range]").forEach((cell) => {
+    const type = cell.dataset.instanceRange;
+    const offset = panel.querySelector(`[data-path="bacnet.offset${type}"]`).value;
+    const range = panel.querySelector(`[data-path="bacnet.instanceRange${type}"]`).value;
+    const isCustom = cell.dataset.instanceNum === "custom";
+    const deviceNum = numberOf(isCustom ? customValue : cell.dataset.instanceNum);
+    if (isCustom && Number.isSafeInteger(deviceNum) && deviceNum >= 0 && (!Number.isSafeInteger(maxDeviceNum) || maxDeviceNum < 0)) {
+      cell.textContent = "Enter a valid maximum device number";
+    } else if (isCustom && Number.isSafeInteger(deviceNum) && deviceNum > maxDeviceNum) {
+      cell.textContent = "device Number too high";
+    } else {
+      cell.textContent = instanceRangeText(numberOf(offset), numberOf(range), deviceNum);
+    }
+  });
 }
 
 // Device profile editor: applies BMS connection and network-server settings to one profile.
@@ -471,10 +521,10 @@ function renderDevice() {
     `<div class="field-row">${inputField("Device profile name", "_name", name)}</div>`,
     `<div class="field-row">${selectField("LoRaWAN class", "lorawan.class", device.lorawan?.class || "A", [["A", "Class A"], ["B", "Class B"], ["C", "Class C"]])}</div>`,
     `<div class="field-row">${selectField("BMS connection", "deviceConnection", assignedConnection, connectionOptions).replace("data-path=", "data-device-connection=")}</div>`,
-    `<div class="field-row">${inputField("Maximum number of this device", "identity.maxDevNum", device.identity?.maxDevNum, { type: "number", min: 1, step: 1 })}</div>`,
+    `<div class="field-row">${inputField("Maximum number of this device", "identity.maxDevNum", device.identity?.maxDevNum, { type: "number", min: 0, step: 1 })}</div>`,
     `<div class="field-row">${selectField("Flush downlink queue", "lorawan.flushDownlinkQueue", String(Boolean(device.lorawan?.flushDownlinkQueue)), [["false", "No"], ["true", "Yes"]])}</div>`,
     `<div class="field-pair">${inputField("First AV instance number", "bacnet.offsetAV", device.bacnet.offsetAV, { type: "number", min: 0, step: 1 })}${inputField("Number of AV for each device", "bacnet.instanceRangeAV", device.bacnet.instanceRangeAV, { type: "number", min: 0, step: 1 })}</div>`,
-    `<div class="field-pair">${inputField("First BV instance number", "bacnet.offsetBV", device.bacnet.offsetBV, { type: "number", min: 0, step: 1 })}${inputField("Number of BV for each device", "bacnet.instanceRangeBV", device.bacnet.instanceRangeBV, { type: "number", min: 0, step: 1 })}</div>`
+    `<div class="field-pair">${inputField("First BV instance number", "bacnet.offsetBV", device.bacnet.offsetBV, { type: "number", min: 0, step: 1 })}${inputField("Number of BV for each device", "bacnet.instanceRangeBV", device.bacnet.instanceRangeBV ?? 0, { type: "number", min: 0, step: 1 })}</div>`
   ];
   let actilityFields = "";
   if (device.lorawan.networkServer === "actility" && hasDownlink(device)) {
@@ -501,6 +551,7 @@ function renderDevice() {
       </div>
       <div id="device-config-panel" class="device-card-body"${deviceExpanded ? "" : " hidden"}>
       <div class="field-grid">${deviceFields.join("")}</div>
+      ${instanceRangeTablesHtml(name)}
       <div class="subsection-heading debug-heading"><div><h3>Message logs</h3></div></div>
       <div class="check-grid">${checkbox("All", debug.includes("all"), "all")}${checkbox("Uplink", debug.includes("up"), "up")}${checkbox("Downlink", debug.includes("down"), "down")}${checkbox("Creation", debug.includes("creation"), "creation")}${checkbox("Transmit time", debug.includes("txTime"), "txTime")}</div>
       <div class="subsection-heading debug-heading"><div><h3>Print device object</h3></div></div>
@@ -513,6 +564,7 @@ function renderDevice() {
     <div class="objects-heading"><div><h2>Mapping between LoRaWAN payloads and BACnet objects <span class="object-count">${Object.keys(objects).length}</span></h2></div><button class="button button-outline" type="button" data-action="add-object">+ Add object</button></div>
     <div class="object-list">${Object.entries(objects).map(([objectName, object]) => renderObject(objectName, object)).join("") || `<div class="empty-objects">No correspondence yet. Add a correspondence between LoRaWAN payload and BACnet object.</div>`}</div>
     <section class="previous-values" id="previous-values">${previousValuesHtml()}</section>`;
+  updateInstanceRangeTables();
   restoreTableScroll($("#previous-values"));
 }
 
@@ -897,7 +949,7 @@ function handleZoneDeviceField(input) {
     }
   } else if (field === "deviceNums") {
     const numbers = input.value.split(",").map((item) => item.trim()).filter(Boolean).map(Number);
-    if (numbers.some((number) => !Number.isInteger(number) || number < 1)) showNotice("Device numbers must be whole numbers greater than 0, separated by commas.", "error");
+    if (numbers.some((number) => !Number.isInteger(number) || number < 0)) showNotice("Device numbers must be non-negative whole numbers, separated by commas.", "error");
     else zone.devices[profileName].deviceNums = numbers;
   } else {
     zone.devices[profileName].AVToBindName = input.value;
@@ -1547,6 +1599,16 @@ async function refreshMqtt() {
     setMqttStatus({ state: "disconnected" });
   }
 }
+
+document.addEventListener("input", (event) => {
+  const input = event.target;
+  if (input.matches("#device-config-panel [data-instance-device-num]")) {
+    state.instanceRangeDeviceNums[state.selectedDevice] = input.value;
+    updateInstanceRangeTables();
+  } else if (input.matches('#device-config-panel [data-path="bacnet.offsetAV"], #device-config-panel [data-path="bacnet.instanceRangeAV"], #device-config-panel [data-path="bacnet.offsetBV"], #device-config-panel [data-path="bacnet.instanceRangeBV"], #device-config-panel [data-path="identity.maxDevNum"]')) {
+    updateInstanceRangeTables();
+  }
+});
 
 document.addEventListener("change", (event) => {
   const input = event.target;
