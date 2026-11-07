@@ -57,3 +57,19 @@ test("top and section save buttons call the same save function", async () => {
   }
   assert.equal(vm.runInContext("saveCalls", context), 2);
 });
+
+test("existing-schedule zones show only a BACnet schedule ID while preserving the internal zone name", () => {
+  const { context, elements } = createEditor();
+  vm.runInContext('render = () => renderZone(); renderZone();', context);
+  assert.match(elements["#zone-editor"].innerHTML, /data-zone-field="scheduleName"/);
+  assert.doesNotMatch(elements["#zone-editor"].innerHTML, /data-zone-field="scheduleID"/);
+  vm.runInContext('handleZoneField({ dataset: { zoneField: "configuration" }, value: EVENTS_CONF })', context);
+  assert.doesNotMatch(elements["#zone-editor"].innerHTML, /data-zone-field="scheduleName"/);
+  assert.match(elements["#zone-editor"].innerHTML, /data-zone-field="scheduleID"/);
+  vm.runInContext('handleZoneField({ dataset: { zoneField: "scheduleID" }, type: "number", value: "0" })', context);
+  assert.match(elements["#zone-editor"].innerHTML, /data-zone-field="scheduleID" type="number" value="0"/);
+  assert.equal(vm.runInContext("state.config.zonesSchedules.zones[0].scheduleName", context), "zone");
+  vm.runInContext('handleZoneField({ dataset: { zoneField: "configuration" }, value: ICAL_CONF })', context);
+  assert.match(elements["#zone-editor"].innerHTML, /data-zone-field="scheduleName" type="text" value="zone"/);
+  assert.doesNotMatch(elements["#zone-editor"].innerHTML, /data-zone-field="scheduleID"/);
+});
