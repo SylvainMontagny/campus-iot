@@ -203,6 +203,7 @@ button { cursor: pointer; }
 .mark-up { color: #28654e; background: #e2f0e5; }
 .mark-down { color: #9c553b; background: #f8e8df; }
 .downlink-fields { margin-top: 12px; padding-top: 13px; border-top: 1px solid #ebefea; }
+.field-pair.downlink-range { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .empty-objects { padding: 20px; color: #7c8981; border: 1px dashed #cbd7cd; text-align: center; font-size: 12px; }
 .empty-state { min-height: 270px; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 28px; background: #fff; border: 1px dashed #c8d5ca; text-align: center; }
 .empty-symbol { width: 40px; height: 40px; display: grid; place-items: center; color: var(--forest); background: #e4eddf; font-size: 25px; }
