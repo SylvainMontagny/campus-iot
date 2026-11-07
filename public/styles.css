@@ -117,6 +117,8 @@ button { cursor: pointer; }
 #mqtt-chirpstack-fields[hidden] { display: none; }
 .mqtt-auto { display: flex; align-items: center; gap: 6px; margin-left: 8px; font-size: 0.9rem; }
 .mqtt-actions { display: flex; align-items: center; gap: 8px; margin-top: 15px; padding-bottom: 20px; border-bottom: 1px solid var(--line); }
+.section-save-row { grid-column: 1 / -1; }
+.section-save-actions { display: flex; justify-content: flex-end; margin-top: 15px; }
 .mqtt-log-section { padding-top: 17px; }
 .mqtt-log-heading { display: flex; align-items: end; justify-content: space-between; gap: 12px; margin-bottom: 9px; }
 .mqtt-log-heading h3 { margin: 4px 0 0; font-size: 14px; }

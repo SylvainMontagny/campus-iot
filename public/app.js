@@ -216,6 +216,10 @@ function checkbox(label, checked, key) {
   return `<label class="check-field"><input type="checkbox" data-debug="${key}"${checked ? " checked" : ""}><span>${escapeHtml(label)}</span></label>`;
 }
 
+function saveButton() {
+  return `<button class="button button-primary" type="button" data-save-config>Save</button>`;
+}
+
 function instanceRangeText(offset, range, deviceNum) {
   if (range === 0) return "No object available";
   if (!Number.isSafeInteger(deviceNum) || deviceNum < 0) return "Enter a non-negative whole device number";
@@ -351,7 +355,7 @@ function renderGlobal() {
   if (global.protocol === "restAPIBacnet") {
     fields.push(`<div class="field-pair">${inputField("Login", "bacnetLogin", global.bacnetLogin)}${inputField("Password", "bacnetPassword", global.bacnetPassword, { secret: true })}</div>`);
   }
-  fields.push(`<div class="mqtt-actions"><button class="button button-primary" type="button" data-action="test-connection">Test</button></div>`);
+  fields.push(`<div class="mqtt-actions section-save-row"><button class="button button-primary" type="button" data-action="test-connection">Test</button>${saveButton()}</div>`);
   $("#global-form").innerHTML = fields.map((html) => html.replaceAll("data-path=", "data-connection-field=")).join("");
   renderBmsObjects(connectionName);
 }
@@ -563,6 +567,7 @@ function renderDevice() {
     </section>
     <div class="objects-heading"><div><h2>Mapping between LoRaWAN payloads and BACnet objects <span class="object-count">${Object.keys(objects).length}</span></h2></div><button class="button button-outline" type="button" data-action="add-object">+ Add object</button></div>
     <div class="object-list">${Object.entries(objects).map(([objectName, object]) => renderObject(objectName, object)).join("") || `<div class="empty-objects">No correspondence yet. Add a correspondence between LoRaWAN payload and BACnet object.</div>`}</div>
+    <div class="section-save-actions">${saveButton()}</div>
     <section class="previous-values" id="previous-values">${previousValuesHtml()}</section>`;
   updateInstanceRangeTables();
   restoreTableScroll($("#previous-values"));
@@ -827,6 +832,7 @@ function renderScheduleConfSection(confKey, title) {
     <div class="subsection-heading debug-heading"><div><h3>Message logs</h3></div></div>
     <div class="check-grid">${logs.map(([key, label]) => `<label class="check-field"><input type="checkbox" data-schedule-log="${key}"${conf.logs[key] !== false ? " checked" : ""}><span>${escapeHtml(label)}</span></label>`).join("")}</div>
     ${advancedPanel(isIcal ? "global" : "global-events", advanced, "Default advanced settings")}
+    <div class="section-save-actions">${saveButton()}</div>
   </section>`;
 }
 
@@ -894,7 +900,7 @@ function renderZone() {
     </section>
     ${eventsOnly ? "" : `<div class="zone-devices${zone.excluded ? " is-zone-excluded" : ""}">
     <div class="objects-heading"><div><h2>Devices <span class="object-count">${Object.keys(zone.devices).length}</span></h2></div><button class="button button-outline" type="button" data-action="add-zone-device">+ Add device</button></div>
-    <div class="object-list">${deviceRows || `<div class="empty-objects">No device yet. Add the LoRaWAN devices controlled by this zone schedule.</div>`}</div></div>`}`;
+    <div class="object-list">${deviceRows || `<div class="empty-objects">No device yet. Add the LoRaWAN devices controlled by this zone schedule.</div>`}</div></div><div class="section-save-actions">${saveButton()}</div>`}`;
 }
 
 // Zones & Schedules editor: validates and applies a change to the selected zone's settings.
@@ -2049,7 +2055,7 @@ document.addEventListener("click", async (event) => {
     return;
   }
 
-  if (event.target.closest("#save-button")) await saveConfig();
+  if (event.target.closest("#save-button, [data-save-config]")) await saveConfig();
   if (event.target.closest("#export-button")) downloadConfig();
   if (event.target.closest("#import-button")) $("#import-file").click();
   if (event.target.closest("#edit-json-button")) {
