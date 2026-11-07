@@ -8,6 +8,7 @@
   expandedObjects: {},
   expandedAdvanced: {},
   expandedZoneDevices: {},
+  expandedZoneGroups: {},
   instanceRangeDeviceNums: {},
   noticeTimer: null,
   mqttLogId: 0,
@@ -426,12 +427,25 @@ function renderNavigation() {
   $("#live-logs-button").classList.toggle("is-active", state.selectedView === "log");
   const zones = state.config.zonesSchedules.zones;
   state.selectedZone = zones.length ? Math.min(Math.max(state.selectedZone ?? 0, 0), zones.length - 1) : null;
-  $("#zone-navigation").innerHTML = zones.map((zone, index) => `
-    <button class="device-nav-item${state.selectedView === "zone" && index === state.selectedZone ? " is-selected" : ""}" type="button" data-select-zone="${index}">
-      <span class="device-nav-copy"><strong>${escapeHtml(zone.scheduleName)}${SCHEDULE_ROWS.flat().every((key) => zone[key] === undefined) ? ' <small class="zone-default-tag">Default config</small>' : ""}</strong><small>Occ: ${escapeHtml(String(zone.valueOccupied ?? state.config.zonesSchedules[confKeyOfZone(zone)].defaults.valueOccupied))} · Unocc: ${escapeHtml(String(zone.valueUnOccupied ?? state.config.zonesSchedules[confKeyOfZone(zone)].defaults.valueUnOccupied))}</small></span>
-      <span class="zone-toggle ${zone.excluded ? "is-off" : "is-on"}" title="${zone.excluded ? "Excluded" : "Included"}" aria-hidden="true"><i>${zone.excluded ? "✕" : "✓"}</i></span>
-      <span class="nav-chevron" aria-hidden="true">›</span>
-    </button>`).join("");
+  $("#zone-navigation").innerHTML = [
+    [ICAL_CONF, "Manage LoRaWAN devices"],
+    [EVENTS_CONF, "Add events to an existing schedule"]
+  ].map(([key, title]) => {
+    const expanded = Boolean(state.expandedZoneGroups[key]);
+    const group = zones.map((zone, index) => ({ zone, index })).filter(({ zone }) => confKeyOfZone(zone) === key);
+    const rows = group.map(({ zone, index }) => `
+      <button class="device-nav-item${state.selectedView === "zone" && index === state.selectedZone ? " is-selected" : ""}" type="button" data-select-zone="${index}">
+        <span class="device-nav-copy"><strong>${escapeHtml(zone.scheduleName)}${SCHEDULE_ROWS.flat().every((setting) => zone[setting] === undefined) ? ' <small class="zone-default-tag">Default config</small>' : ""}</strong><small>Occ: ${escapeHtml(String(zone.valueOccupied ?? state.config.zonesSchedules[key].defaults.valueOccupied))} · Unocc: ${escapeHtml(String(zone.valueUnOccupied ?? state.config.zonesSchedules[key].defaults.valueUnOccupied))}</small></span>
+        <span class="zone-toggle ${zone.excluded ? "is-off" : "is-on"}" title="${zone.excluded ? "Excluded" : "Included"}" aria-hidden="true"><i>${zone.excluded ? "✕" : "✓"}</i></span>
+        <span class="nav-chevron" aria-hidden="true">›</span>
+      </button>`).join("");
+    return `<section class="zone-nav-group">
+      <button class="zone-nav-heading" type="button" data-zone-group-toggle="${key}" aria-expanded="${expanded}" aria-controls="zone-group-${key}">
+        <span class="zone-nav-title">${escapeHtml(title)}</span><span class="zone-nav-count">${group.length}</span><span class="zone-nav-chevron" aria-hidden="true">${expanded ? "−" : "+"}</span>
+      </button>
+      <div id="zone-group-${key}" class="zone-nav-list"${expanded ? "" : " hidden"}>${rows || `<p class="zone-nav-empty">No zones yet.</p>`}</div>
+    </section>`;
+  }).join("");
   // BMS connection navigation: renders a warning marker when a connection has a warning.
   const warningSign = (name) => state.config.connections[name]?.status?.warning
     ? `<span class="warning-sign" title="${escapeHtml(state.config.connections[name].status.warning)}" aria-label="Warning">⚠</span>` : "";
@@ -924,6 +938,7 @@ function handleZoneField(input) {
     zone[key] = input.value.trim();
   } else if (key === "configuration") {
     zone.configuration = input.value;
+    state.expandedZoneGroups[confKeyOfZone(zone)] = true;
     if (input.value === EVENTS_CONF) zone.scheduleID ??= "";
     else delete zone.scheduleID;
   } else if (key === "scheduleID") {
@@ -1730,6 +1745,14 @@ document.addEventListener("change", (event) => {
 });
 
 document.addEventListener("click", async (event) => {
+  const zoneGroupToggle = event.target.closest("[data-zone-group-toggle]");
+  if (zoneGroupToggle) {
+    const key = zoneGroupToggle.dataset.zoneGroupToggle;
+    state.expandedZoneGroups[key] = !state.expandedZoneGroups[key];
+    renderNavigation();
+    $(`[data-zone-group-toggle="${key}"]`).focus();
+    return;
+  }
   const clearButton = event.target.closest("[data-clear-log]");
   if (clearButton) clearLog(clearButton.dataset.clearLog);
   const toggleButton = event.target.closest("[data-toggle-log]");
@@ -1998,6 +2021,7 @@ document.addEventListener("click", async (event) => {
         zones.push({ scheduleName: `zone-${index}`, configuration: ICAL_CONF, connectionName: Object.keys(state.config.connections)[0] || "", url: "", excluded: false, devices: {} });
         state.selectedZone = zones.length - 1;
         state.selectedView = "zone";
+        state.expandedZoneGroups[ICAL_CONF] = true;
         break;
       }
       case "reset-zone-defaults": {
