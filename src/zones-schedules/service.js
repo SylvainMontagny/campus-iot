@@ -2,6 +2,7 @@ const axios = require("axios");
 const https = require("node:https");
 const ical = require("node-ical");
 const { validateZonesSchedules, resolveZones, SCHEDULE_EVENTS } = require("./configuration");
+const { eventsInWindow } = require("./calendar-events");
 const { createNativeScheduleDriver } = require("../bms-connections/adapters/bacnet/schedules");
 
 // Schedule polling: waits without keeping the Node.js process alive.
@@ -55,36 +56,10 @@ function tzParts(date, timeZone) {
   };
 }
 
-// iCalendar conversion: unwraps calendar text properties returned as value objects.
-// iCalendar conversion: unwraps calendar text properties returned as value objects.
-const text = (value) => (value && typeof value === "object" ? String(value.val ?? "") : String(value ?? ""));
-
 /** iCalendar input: fetches a zone calendar and returns its events inside the preview window. */
 async function fetchEvents(zone) {
   const data = await ical.async.fromURL(zone.url);
-  const now = Date.now();
-  const horizon = now + zone.nbrDaysPreview * 86400000;
-  const out = [];
-
-  for (const event of Object.values(data)) {
-    if (event.type !== "VEVENT") continue;
-    const summary = text(event.summary);
-    const description = text(event.description);
-    const duration = event.end - event.start;
-
-    // Simplified recurrence handling (no RECURRENCE-ID overrides)
-    const starts = event.rrule
-      ? event.rrule.between(new Date(now - duration), new Date(horizon), true)
-        .filter((date) => !(event.exdate && event.exdate[date.toISOString().slice(0, 10)]))
-      : [event.start];
-
-    for (const startDate of starts) {
-      const start = new Date(startDate);
-      const end = new Date(start.getTime() + duration);
-      if (end.getTime() > now && start.getTime() < horizon) out.push({ start, end, summary, description });
-    }
-  }
-  return out.sort((a, b) => a.start - b.start);
+  return eventsInWindow(data, zone.nbrDaysPreview);
 }
 
 /** iCalendar conversion: filters, groups, and converts events into BACnet special-event transitions. */

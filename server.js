@@ -163,7 +163,8 @@ app.post("/api/bms/objects/delete", async (request, response) => {
 // HTTP API: validates and previews an iCalendar URL from the zone editor.
 app.post("/api/zones/test-ical", async (request, response) => {
   try {
-    response.json({ ok: true, message: await testIcalUrl(request.body?.url) });
+    const { url, nbrDaysPreview, addSuffixToAdeURL, timeZone } = request.body ?? {};
+    response.json({ ok: true, message: await testIcalUrl(url, { nbrDaysPreview, addSuffixToAdeURL, timeZone }) });
   } catch (error) {
     response.status(502).json({ ok: false, error: error.message });
   }

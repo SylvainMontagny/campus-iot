@@ -142,6 +142,8 @@ test("ADE suffix is appended or replaced only when enabled", () => {
   const base = { addSuffixToAdeURL: true, nbrDaysPreview: 10 };
   assert.equal(applyAdeUrlSuffix({ ...base, url: "https://x/a?b=1" }, now), "https://x/a?b=1&lastDate=2025-01-11");
   assert.equal(applyAdeUrlSuffix({ ...base, url: "https://x/a?b=1&lastDate=2020-01-01" }, now), "https://x/a?b=1&lastDate=2025-01-11");
+  assert.equal(applyAdeUrlSuffix({ ...base, url: "https://x/a" }, now), "https://x/a?lastDate=2025-01-11");
+  assert.equal(applyAdeUrlSuffix({ ...base, url: "https://x/a?lastDate=old&b=1#test" }, now), "https://x/a?lastDate=2025-01-11&b=1#test");
   assert.equal(applyAdeUrlSuffix({ ...base, addSuffixToAdeURL: false, url: "https://x/a" }, now), "https://x/a");
 });
 

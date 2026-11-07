@@ -1954,13 +1954,19 @@ document.addEventListener("click", async (event) => {
       case "test-ical": {
         const zone = state.config.zonesSchedules.zones[state.selectedZone];
         if (!zone) break;
+        const defaults = state.config.zonesSchedules[confKeyOfZone(zone)].defaults;
         actionButton.disabled = true;
         showNotice("Testing iCalendar URL…", "success");
         try {
           const response = await fetch("/api/zones/test-ical", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ url: zone.url })
+            body: JSON.stringify({
+              url: zone.url,
+              nbrDaysPreview: zone.nbrDaysPreview ?? defaults.nbrDaysPreview,
+              addSuffixToAdeURL: zone.addSuffixToAdeURL ?? defaults.addSuffixToAdeURL,
+              timeZone: zone.timeZone ?? defaults.timeZone
+            })
           });
           const result = await response.json();
           if (!response.ok) throw new Error(result.error || "iCalendar URL test failed.");

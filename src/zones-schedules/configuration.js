@@ -304,9 +304,13 @@ function applyAdeUrlSuffix(zone, now = new Date()) {
   const d = new Date(now);
   d.setDate(d.getDate() + zone.nbrDaysPreview);
   const suffix = d.toISOString().slice(0, 10);
-  return zone.url.includes("&lastDate")
-    ? zone.url.replace(/&lastDate=\d{4}-\d{2}-\d{2}/, `&lastDate=${suffix}`)
-    : `${zone.url}&lastDate=${suffix}`;
+  const hashIndex = zone.url.indexOf("#");
+  const url = hashIndex < 0 ? zone.url : zone.url.slice(0, hashIndex);
+  const fragment = hashIndex < 0 ? "" : zone.url.slice(hashIndex);
+  const updated = /[?&]lastDate=/.test(url)
+    ? url.replace(/([?&]lastDate=)[^&]*/, `$1${suffix}`)
+    : `${url}${url.includes("?") ? (/[?&]$/.test(url) ? "" : "&") : "?"}lastDate=${suffix}`;
+  return updated + fragment;
 }
 
 // Zones & Schedules validation: reports calendar URLs unintentionally shared by multiple zones.
