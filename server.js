@@ -1,6 +1,7 @@
 const express = require("express");
 const path = require("node:path");
 const { isDeepStrictEqual } = require("node:util");
+require("dotenv").config({ path: path.join(__dirname, ".env") });
 const { validateConfig } = require("./src/config/validation");
 const {
   readConfig,
