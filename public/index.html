@@ -19,17 +19,78 @@
         </a>
         <span id="mqtt-state" class="connection-state"><span class="state-dot state-dot-offline"></span>MQTT offline</span>
       </div>
-      <button id="live-logs-button" class="button button-live-logs" type="button" data-select-view="log">Live logs</button>
+      <button id="live-logs-button" class="button button-live-logs" type="button" data-select-view="log" hidden>Live logs</button>
       <div class="topbar-right">
-        <button id="import-button" class="button button-quiet" type="button">Import CONF</button>
-        <button id="export-button" class="button button-quiet" type="button">Export CONF</button>
-        <button id="edit-json-button" class="button button-quiet" type="button">Edit CONF</button>
-        <button id="save-button" class="button button-primary" type="button">Save</button>
+        <button id="import-button" class="button button-quiet" type="button" hidden>Import CONF</button>
+        <button id="export-button" class="button button-quiet" type="button" hidden>Export CONF</button>
+        <button id="edit-json-button" class="button button-quiet" type="button" hidden>Edit CONF</button>
+        <button id="save-button" class="button button-primary" type="button" hidden>Save</button>
+        <button id="auth-lock-button" class="button button-lock" type="button" aria-label="Password protection is disabled" title="Password protection is disabled" hidden></button>
         <input id="import-file" type="file" accept="application/json,.json,application/zip,.zip" multiple hidden>
       </div>
     </header>
 
-    <main class="workspace">
+    <main id="auth-screen" class="auth-screen" hidden>
+      <section class="auth-card">
+        <h1>Unlock Campus IoT</h1>
+        <p>Enter the application password to continue.</p>
+        <form id="auth-login-form">
+          <label for="auth-login-password">Password</label>
+          <div class="password-input-wrap">
+            <input id="auth-login-password" name="password" type="password" autocomplete="current-password" required maxlength="256">
+            <button class="password-toggle" type="button" data-password-toggle="auth-login-password" aria-controls="auth-login-password" aria-label="Show password" title="Show password">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+            </button>
+          </div>
+          <div id="auth-login-error" class="inline-error" role="alert" hidden></div>
+          <button class="button button-primary" type="submit">Unlock</button>
+        </form>
+      </section>
+    </main>
+
+    <main id="security-page" class="security-page" hidden>
+      <section class="auth-card">
+        <h1 id="security-page-title">Application security</h1>
+        <p id="security-page-description"></p>
+        <form id="auth-settings-form">
+          <div id="auth-current-group" class="auth-field" hidden>
+            <label for="auth-current-password">Current password</label>
+            <div class="password-input-wrap">
+              <input id="auth-current-password" name="currentPassword" type="password" autocomplete="current-password" maxlength="256">
+              <button class="password-toggle" type="button" data-password-toggle="auth-current-password" aria-controls="auth-current-password" aria-label="Show password" title="Show password">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+              </button>
+            </div>
+          </div>
+          <div class="auth-field">
+            <label for="auth-new-password">New password</label>
+            <div class="password-input-wrap">
+              <input id="auth-new-password" name="password" type="password" autocomplete="new-password" maxlength="256">
+              <button class="password-toggle" type="button" data-password-toggle="auth-new-password" aria-controls="auth-new-password" aria-label="Show password" title="Show password">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+              </button>
+            </div>
+          </div>
+          <div class="auth-field">
+            <label for="auth-confirm-password">Confirm new password</label>
+            <div class="password-input-wrap">
+              <input id="auth-confirm-password" name="confirmation" type="password" autocomplete="new-password" maxlength="256">
+              <button class="password-toggle" type="button" data-password-toggle="auth-confirm-password" aria-controls="auth-confirm-password" aria-label="Show password" title="Show password">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+              </button>
+            </div>
+          </div>
+          <div id="auth-settings-message" class="auth-message" role="status" aria-live="polite" hidden></div>
+          <div class="auth-actions">
+            <button id="auth-save-button" class="button button-primary" type="submit">Enable password protection</button>
+            <button id="auth-disable-button" class="button button-danger-quiet" type="button" hidden>Disable protection</button>
+            <button id="auth-cancel-button" class="button button-outline" type="button">Back</button>
+          </div>
+        </form>
+      </section>
+    </main>
+
+    <main id="workspace" class="workspace" hidden>
       <aside class="rail" aria-label="Configuration navigation">
         <div class="rail-group">
           <button class="rail-title rail-title-mqtt" type="button" data-select-view="mqtt">

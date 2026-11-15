@@ -13,15 +13,117 @@
   noticeTimer: null,
   mqttLogId: 0,
   mqttRawId: 0,
-  paused: { log: false, raw: false }
+  paused: { log: false, raw: false },
+  authEnabled: false,
+  applicationInitialized: false
 };
 
 // UI helper: selects the first element matching a CSS selector.
 const $ = (selector) => document.querySelector(selector);
+const apiFetch = async (...args) => {
+  const response = await fetch(...args);
+  const requestUrl = new URL(typeof args[0] === "string" ? args[0] : args[0].url, window.location.href);
+  if (response.status === 401 && !requestUrl.pathname.startsWith("/api/auth/")) {
+    showLoginScreen("Your session has expired. Enter the password to continue.");
+  }
+  return response;
+};
 // UI helper: escapes user-provided text before inserting it into generated HTML.
 const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, (character) => ({
   "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
 }[character]));
+
+function setToolbarVisible(visible) {
+  for (const selector of ["#live-logs-button", "#import-button", "#export-button", "#edit-json-button", "#save-button"]) {
+    $(selector).hidden = !visible;
+  }
+}
+
+function updateLockButton() {
+  const button = $("#auth-lock-button");
+  button.hidden = false;
+  button.setAttribute("aria-label", state.authEnabled ? "Manage password protection" : "Enable password protection");
+  button.title = button.getAttribute("aria-label");
+  button.innerHTML = state.authEnabled
+    ? '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="10" width="14" height="11" rx="2"></rect><path d="M8 10V7a4 4 0 0 1 8 0v3"></path><path d="M12 14v3"></path></svg>'
+    : '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="10" width="14" height="11" rx="2"></rect><path d="M8 10V7a4 4 0 0 1 7.7-1.5"></path><path d="M12 14v3"></path></svg>';
+}
+
+function showLoginScreen(message = "") {
+  $("#workspace").hidden = true;
+  $("#security-page").hidden = true;
+  $("#auth-screen").hidden = false;
+  $("#auth-lock-button").hidden = true;
+  setToolbarVisible(false);
+  $("#auth-login-error").textContent = message;
+  $("#auth-login-error").hidden = !message;
+  $("#auth-login-password").focus();
+}
+
+function showWorkspace() {
+  $("#auth-screen").hidden = true;
+  $("#security-page").hidden = true;
+  $("#workspace").hidden = false;
+  setToolbarVisible(true);
+  updateLockButton();
+}
+
+function showSecurityPage() {
+  $("#workspace").hidden = true;
+  $("#auth-screen").hidden = true;
+  $("#security-page").hidden = false;
+  $("#auth-lock-button").hidden = true;
+  setToolbarVisible(false);
+  $("#auth-settings-form").reset();
+  $("#auth-current-group").hidden = !state.authEnabled;
+  $("#auth-current-password").required = state.authEnabled;
+  $("#auth-new-password").required = true;
+  $("#auth-confirm-password").required = true;
+  $("#security-page-title").textContent = state.authEnabled ? "Change application password" : "Enable password protection";
+  $("#security-page-description").textContent = state.authEnabled
+    ? "Enter the current password and confirm a new password. You can also disable protection."
+    : "Choose a password to restrict access to the application interface and its APIs.";
+  $("#auth-save-button").textContent = state.authEnabled ? "Change password" : "Enable password protection";
+  $("#auth-disable-button").hidden = !state.authEnabled;
+  $("#auth-settings-message").hidden = true;
+}
+
+function showSecurityMessage(message, isError = false) {
+  const element = $("#auth-settings-message");
+  element.textContent = message;
+  element.classList.toggle("is-error", isError);
+  element.hidden = !message;
+}
+
+async function initializeApplication() {
+  if (state.applicationInitialized) return;
+  state.applicationInitialized = true;
+  loadConfig();
+  loadMqttSettings();
+  loadVersion();
+  clearLog("mqtt-log");
+  clearLog("mqtt-raw-log");
+  refreshMqtt();
+  setInterval(refreshMqtt, 1200);
+}
+
+async function initializeAuthentication() {
+  registerAuthenticationForms();
+  try {
+    const response = await apiFetch("/api/auth/status");
+    if (!response.ok) throw new Error("Authentication status is unavailable.");
+    const auth = await response.json();
+    state.authEnabled = auth.enabled;
+    if (!auth.authenticated) {
+      showLoginScreen();
+      return;
+    }
+    showWorkspace();
+    initializeApplication();
+  } catch (error) {
+    showLoginScreen(error.message || "The server could not be reached.");
+  }
+}
 
 const ICAL_CONF = "icalToScheduleConf";
 const EVENTS_CONF = "scheduleEventsConf";
@@ -660,7 +762,7 @@ async function getProfileBmsObjects() {
   state.previousValues[profile] = { loading: true };
   renderPreviousValues();
   try {
-    const response = await fetch(`/api/device-profiles/${encodeURIComponent(profile)}/bms-objects`, { method: "POST" });
+    const response = await apiFetch(`/api/device-profiles/${encodeURIComponent(profile)}/bms-objects`, { method: "POST" });
     const result = await response.json();
     state.previousValues[profile] = response.ok ? { rows: result.rows } : { error: result.error || "Reading the object list failed." };
   } catch (error) {
@@ -1360,7 +1462,7 @@ async function saveConfig() {
     return;
   }
   syncAssignedConnections();
-  const response = await fetch("/api/config", {
+  const response = await apiFetch("/api/config", {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ ...state.config, zonesSchedules: splitZones(state.config.zonesSchedules) })
@@ -1395,7 +1497,7 @@ function findDuplicateConnections() {
 // Application startup: retrieves the server version for display in the page footer.
 async function loadVersion() {
   try {
-    const response = await fetch("/api/health");
+    const response = await apiFetch("/api/health");
     if (response.ok) $("#app-version").textContent = `Version ${(await response.json()).version}`;
   } catch {
     // The version label is optional.
@@ -1405,7 +1507,7 @@ async function loadVersion() {
 // Application startup: loads saved configuration and initializes the configuration editors.
 async function loadConfig() {
   try {
-    const response = await fetch("/api/config");
+    const response = await apiFetch("/api/config");
     if (!response.ok) throw new Error("Configuration endpoint unavailable");
     state.config = await response.json();
     state.config.connections ||= {};
@@ -1535,7 +1637,7 @@ function readMqttForm() {
 // MQTT settings editor: saves broker and network-server settings through the application API.
 async function saveMqttSettings() {
   try {
-    const response = await fetch("/api/mqtt/settings", {
+    const response = await apiFetch("/api/mqtt/settings", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(readMqttForm())
@@ -1549,7 +1651,7 @@ async function saveMqttSettings() {
 // MQTT settings editor: loads saved broker settings and updates related form defaults.
 async function loadMqttSettings() {
   try {
-    const response = await fetch("/api/mqtt/settings");
+    const response = await apiFetch("/api/mqtt/settings");
     if (!response.ok) return;
     const settings = await response.json();
     for (const field of MQTT_TEXT_FIELDS) {
@@ -1572,7 +1674,7 @@ async function connectMqtt() {
   const settings = readMqttForm();
   await saveMqttSettings();
   try {
-    const response = await fetch("/api/mqtt/connect", {
+    const response = await apiFetch("/api/mqtt/connect", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(settings)
@@ -1589,7 +1691,7 @@ async function connectMqtt() {
 // MQTT connection UI: asks the service to disconnect from the broker and refreshes the status.
 async function disconnectMqtt() {
   try {
-    const response = await fetch("/api/mqtt/disconnect", { method: "POST" });
+    const response = await apiFetch("/api/mqtt/disconnect", { method: "POST" });
     if (!response.ok) throw new Error("Unable to disconnect from the MQTT broker.");
     setMqttStatus(await response.json());
   } catch (error) {
@@ -1601,9 +1703,9 @@ async function disconnectMqtt() {
 async function refreshMqtt() {
   try {
     const [statusResponse, logsResponse, rawResponse] = await Promise.all([
-      fetch("/api/mqtt/status"),
-      fetch(`/api/mqtt/logs?after=${state.mqttLogId}`),
-      fetch(`/api/mqtt/raw?after=${state.mqttRawId}`)
+      apiFetch("/api/mqtt/status"),
+      apiFetch(`/api/mqtt/logs?after=${state.mqttLogId}`),
+      apiFetch(`/api/mqtt/raw?after=${state.mqttRawId}`)
     ]);
     if (!statusResponse.ok || !logsResponse.ok || !rawResponse.ok) return;
     setMqttStatus(await statusResponse.json());
@@ -1745,6 +1847,45 @@ document.addEventListener("change", (event) => {
 });
 
 document.addEventListener("click", async (event) => {
+  const passwordToggle = event.target.closest("[data-password-toggle]");
+  if (passwordToggle) {
+    const input = $(`#${passwordToggle.dataset.passwordToggle}`);
+    const isVisible = input.type === "text";
+    input.type = isVisible ? "password" : "text";
+    passwordToggle.setAttribute("aria-label", isVisible ? "Show password" : "Hide password");
+    passwordToggle.title = isVisible ? "Show password" : "Hide password";
+    passwordToggle.innerHTML = isVisible
+      ? '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z"></path><circle cx="12" cy="12" r="3"></circle></svg>'
+      : '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 3 18 18"></path><path d="M10.6 5.1A10.7 10.7 0 0 1 12 5c6.4 0 10 7 10 7a16 16 0 0 1-3.1 3.8M6.2 6.2C3.5 8 2 12 2 12s3.6 7 10 7a10.7 10.7 0 0 0 3-.4"></path><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"></path></svg>';
+    return;
+  }
+  if (event.target.closest("#auth-lock-button")) {
+    showSecurityPage();
+    return;
+  }
+  if (event.target.closest("#auth-cancel-button")) {
+    showWorkspace();
+    return;
+  }
+  if (event.target.closest("#auth-disable-button")) {
+    if (!window.confirm("Disable password protection for this application?")) return;
+    showSecurityMessage("");
+    try {
+      const response = await apiFetch("/api/auth/disable", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ currentPassword: $("#auth-current-password").value })
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Could not disable password protection.");
+      state.authEnabled = false;
+      $("#auth-settings-form").reset();
+      showWorkspace();
+    } catch (error) {
+      showSecurityMessage(error.message, true);
+    }
+    return;
+  }
   const zoneGroupToggle = event.target.closest("[data-zone-group-toggle]");
   if (zoneGroupToggle) {
     const key = zoneGroupToggle.dataset.zoneGroupToggle;
@@ -1882,7 +2023,7 @@ document.addEventListener("click", async (event) => {
         showNotice("Testing BMS connection…", "success");
         const { status: previousStatus, ...connectionSettings } = connection;
         try {
-          const response = await fetch("/api/bms/test", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(connectionSettings) });
+          const response = await apiFetch("/api/bms/test", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(connectionSettings) });
           const result = await response.json();
           if (!response.ok) throw new Error(result.error || "BMS connection test failed.");
           connection.status = result.warning
@@ -1930,7 +2071,7 @@ document.addEventListener("click", async (event) => {
         result.deleting = true;
         renderBmsObjects(connectionName);
         try {
-          const response = await fetch("/api/bms/objects/delete", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ connection, objects }) });
+          const response = await apiFetch("/api/bms/objects/delete", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ connection, objects }) });
           const outcome = await response.json();
           if (!response.ok) throw new Error(outcome.error || "Deleting the objects failed.");
           const failedKeys = new Set(outcome.failed.map(objectKey));
@@ -1950,7 +2091,7 @@ document.addEventListener("click", async (event) => {
         state.whoIs = { loading: true };
         render();
         try {
-          const response = await fetch("/api/bms/who-is", { method: "POST" });
+          const response = await apiFetch("/api/bms/who-is", { method: "POST" });
           const result = await response.json();
           state.whoIs = response.ok ? { devices: result.devices } : { error: result.error || "The Who-Is failed." };
         } catch (error) {
@@ -1966,7 +2107,7 @@ document.addEventListener("click", async (event) => {
         state.bmsObjects[connectionName] = { loading: true };
         render();
         try {
-          const response = await fetch("/api/bms/objects", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(connection) });
+          const response = await apiFetch("/api/bms/objects", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(connection) });
           const result = await response.json();
           state.bmsObjects[connectionName] = response.ok ? { values: result.values, schedules: result.schedules } : { error: result.error || "Reading the object list failed." };
         } catch (error) {
@@ -1981,7 +2122,7 @@ document.addEventListener("click", async (event) => {
         actionButton.disabled = true;
         showNotice("Testing iCalendar URL…", "success");
         try {
-          const response = await fetch("/api/zones/test-ical", {
+          const response = await apiFetch("/api/zones/test-ical", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -2099,7 +2240,7 @@ document.addEventListener("click", async (event) => {
       if (!imported || typeof imported !== "object" || Array.isArray(imported)) throw new Error("Device profiles must be a JSON object.");
         const importedConnections = linkDeviceProfilesToConnections(imported);
         const candidate = { ...state.config, ...importedConnections, deviceProfiles: imported };
-      const response = await fetch("/api/config/validate", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(candidate) });
+      const response = await apiFetch("/api/config/validate", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(candidate) });
       const result = await response.json();
       if (!response.ok) throw new Error(result.errors.map(formatIssue).join("\n"));
       state.config.deviceProfiles = imported;
@@ -2119,6 +2260,61 @@ document.addEventListener("click", async (event) => {
     }
   }
 });
+
+function registerAuthenticationForms() {
+  $("#auth-login-form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    $("#auth-login-error").hidden = true;
+    try {
+      const response = await apiFetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password: $("#auth-login-password").value })
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Could not log in.");
+      state.authEnabled = true;
+      $("#auth-login-form").reset();
+      showWorkspace();
+      await initializeApplication();
+    } catch (error) {
+      $("#auth-login-error").textContent = error.message;
+      $("#auth-login-error").hidden = false;
+      $("#auth-login-password").focus();
+    }
+  });
+
+  $("#auth-settings-form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    showSecurityMessage("");
+    const isSetup = !state.authEnabled;
+    const endpoint = isSetup ? "/api/auth/setup" : "/api/auth/password";
+    const payload = {
+      password: $("#auth-new-password").value,
+      confirmation: $("#auth-confirm-password").value
+    };
+    if (!isSetup) payload.currentPassword = $("#auth-current-password").value;
+    try {
+      const response = await apiFetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Could not update password protection.");
+      state.authEnabled = true;
+      $("#auth-settings-form").reset();
+      if (isSetup) {
+        showWorkspace();
+        await initializeApplication();
+      } else {
+        showSecurityMessage("Password updated.");
+      }
+    } catch (error) {
+      showSecurityMessage(error.message, true);
+    }
+  });
+}
 
 $("#import-file").addEventListener("change", async (event) => {
   const selected = Array.from(event.target.files || []);
@@ -2204,7 +2400,7 @@ $("#import-file").addEventListener("change", async (event) => {
       throw new Error("MQTT autoConnect must be a boolean.");
     }
 
-    const validation = await fetch("/api/config/validate?zonesSchedules=true", {
+    const validation = await apiFetch("/api/config/validate?zonesSchedules=true", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ...candidate, zonesSchedules: splitZones(candidate.zonesSchedules) })
@@ -2235,10 +2431,4 @@ $("#import-file").addEventListener("change", async (event) => {
   event.target.value = "";
 });
 
-loadConfig();
-loadMqttSettings();
-loadVersion();
-clearLog("mqtt-log");
-clearLog("mqtt-raw-log");
-refreshMqtt();
-setInterval(refreshMqtt, 1200);
+initializeAuthentication();

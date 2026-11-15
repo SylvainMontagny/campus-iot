@@ -38,7 +38,7 @@ function createPreview() {
   };
   const context = vm.createContext({ document });
   const source = fs.readFileSync(path.join(__dirname, "..", "public", "app.js"), "utf8");
-  vm.runInContext(source.slice(0, source.lastIndexOf("\nloadConfig();")), context);
+  vm.runInContext(source.slice(0, source.lastIndexOf("\ninitializeAuthentication();")), context);
   vm.runInContext('state.selectedDevice = "loraDeviceA"', context);
   const input = (target, isCustom) => listeners.input({
     target: { ...target, matches: (selector) => isCustom ? selector.includes("[data-instance-device-num]") : selector.includes(`[data-path="${target.path}"]`) }

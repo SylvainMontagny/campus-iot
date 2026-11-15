@@ -16,7 +16,7 @@ function createEditor() {
   };
   const context = vm.createContext({ document });
   const source = fs.readFileSync(path.join(__dirname, "..", "public", "app.js"), "utf8");
-  vm.runInContext(source.slice(0, source.lastIndexOf("\nloadConfig();")), context);
+  vm.runInContext(source.slice(0, source.lastIndexOf("\ninitializeAuthentication();")), context);
   vm.runInContext(`
     state.config = defaultConfig();
     state.config.connections.bms = defaultConnection();

@@ -5,5 +5,10 @@ services:
     container_name: campus-IoT
     restart: unless-stopped
     network_mode: host
+    volumes:
+      - campus-iot-data:/app/data
     environment:
       PORT: "3000"
+
+volumes:
+  campus-iot-data:

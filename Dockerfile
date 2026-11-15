@@ -10,7 +10,7 @@ COPY server.js ./
 COPY src ./src
 COPY public ./public
 
-# The app writes its configuration to /app/data (not persisted without a volume).
+# Configuration and authentication data are persisted by the Compose volume mounted at /app/data.
 RUN mkdir -p /app/data && chown -R node:node /app/data
 USER node
 
