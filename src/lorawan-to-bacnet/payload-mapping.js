@@ -4,6 +4,41 @@ const NETWORKS = {
   actility: { uplinkSuffix: "/uplink", downlinkSuffix: "/downlink" }
 };
 
+function extractPayloadCatalogEntry(rawPayload) {
+  let payload;
+  try {
+    payload = Buffer.isBuffer(rawPayload) ? JSON.parse(rawPayload.toString("utf8")) :
+      typeof rawPayload === "string" ? JSON.parse(rawPayload) : rawPayload;
+  } catch {
+    return null;
+  }
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return null;
+
+  let deviceName;
+  let devicePayload;
+  if (Object.hasOwn(payload, "deviceInfo")) {
+    if (payload.fPort === 0 || !Object.hasOwn(payload, "object")) return null;
+    deviceName = payload.deviceInfo?.deviceName;
+    devicePayload = payload.object;
+  }
+  if (Object.hasOwn(payload, "end_device_ids")) {
+    if (!payload.uplink_message || !Object.hasOwn(payload.uplink_message, "decoded_payload")) return null;
+    deviceName = payload.end_device_ids?.device_id;
+    devicePayload = payload.uplink_message.decoded_payload;
+  }
+  if (Object.hasOwn(payload, "DevEUI_uplink")) {
+    if (Object.hasOwn(payload, "DevEUI_notification") || Object.hasOwn(payload, "DevEUI_downlink_Rejected")) return null;
+    const uplink = payload.DevEUI_uplink;
+    if (!uplink || !Object.hasOwn(uplink, "payload")) return null;
+    deviceName = uplink.CustomerData?.name;
+    devicePayload = uplink.payload;
+  }
+
+  const match = String(deviceName).match(/^(.*)-(\d+)$/);
+  if (!match || !devicePayload || typeof devicePayload !== "object" || Array.isArray(devicePayload)) return null;
+  return { deviceProfile: match[1], payloadNames: Object.keys(devicePayload) };
+}
+
 // LoRaWAN-to-BACnet mapping: decodes network-server uplinks and resolves payload fields to a configured device profile.
 function mapIncomingPacket(topic, rawPayload, deviceProfiles) {
   let payload;
@@ -140,4 +175,4 @@ function mapIncomingPacket(topic, rawPayload, deviceProfiles) {
   return { device };
 }
 
-module.exports = { mapIncomingPacket };
+module.exports = { extractPayloadCatalogEntry, mapIncomingPacket };

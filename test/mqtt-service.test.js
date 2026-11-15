@@ -2,7 +2,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const { EventEmitter } = require("node:events");
 const { createMqttService } = require("../src/mqtt-connections/service");
-const { mapIncomingPacket } = require("../src/lorawan-to-bacnet/payload-mapping");
+const { extractPayloadCatalogEntry, mapIncomingPacket } = require("../src/lorawan-to-bacnet/payload-mapping");
 
 function makeDeviceProfiles() {
   return {
@@ -30,6 +30,44 @@ function makeDeviceProfiles() {
     }
   };
 }
+
+test("extracts payload names from uplinks for each supported network server", () => {
+  const packets = [
+    { end_device_ids: { device_id: "sensor-1" }, uplink_message: { decoded_payload: { temperature: 21, humidity: 45 } } },
+    { deviceInfo: { deviceName: "sensor-2" }, object: { temperature: 22 } },
+    { DevEUI_uplink: { CustomerData: { name: "sensor-3" }, payload: { temperature: 23 } } }
+  ];
+
+  assert.deepEqual(packets.map(extractPayloadCatalogEntry), [
+    { deviceProfile: "sensor", payloadNames: ["temperature", "humidity"] },
+    { deviceProfile: "sensor", payloadNames: ["temperature"] },
+    { deviceProfile: "sensor", payloadNames: ["temperature"] }
+  ]);
+  assert.equal(extractPayloadCatalogEntry({ DevEUI_uplink: {}, DevEUI_notification: {} }), null);
+});
+
+test("records payload names from MQTT uplinks even when the profile is not configured", async () => {
+  const fakeClient = new EventEmitter();
+  fakeClient.subscribe = (_topic, callback) => callback(null);
+  fakeClient.end = () => {};
+  const catalogEntries = [];
+  const service = createMqttService({
+    getDeviceProfiles: async () => ({}),
+    onPayloadCatalogUpdate: async (entry) => catalogEntries.push(entry),
+    clientFactory: () => fakeClient
+  });
+
+  service.connect({ server: "broker.local", port: 1883, topic: "#" });
+  fakeClient.emit("connect");
+  fakeClient.emit("message", "sensor/up", Buffer.from(JSON.stringify({
+    end_device_ids: { device_id: "sensor-1" },
+    uplink_message: { decoded_payload: { temperature: 21, humidity: 45 } }
+  })));
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.deepEqual(catalogEntries, [{ deviceProfile: "sensor", payloadNames: ["temperature", "humidity"] }]);
+  service.disconnect();
+});
 
 test("maps a TTS uplink to a cloned device output", () => {
   const deviceProfiles = makeDeviceProfiles();

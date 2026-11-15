@@ -15,6 +15,7 @@ const {
   applyConnectionsToDevices
 } = require("./src/config/storage");
 const { createMqttService } = require("./src/mqtt-connections/service");
+const { createPayloadCatalog } = require("./src/lorawan-to-bacnet/payload-catalog");
 const { createIcalScheduleService } = require("./src/zones-schedules/service");
 const { validateZonesSchedules, resolveZones, findDuplicateIcalUrls } = require("./src/zones-schedules/configuration");
 const { testBmsConnection, listBmsObjects, deleteBmsObjects, discoverBmsDevices, buildBmsObjectRows } = require("./src/bms-connections/service");
@@ -126,8 +127,10 @@ function verifySameOrigin(request, response, next) {
   next();
 }
 
+const payloadCatalog = createPayloadCatalog();
 const mqttService = createMqttService({
   getDeviceProfiles: async () => (await readConfig()).deviceProfiles,
+  onPayloadCatalogUpdate: payloadCatalog.record,
   // Present value of the schedules controlling the downlink objects, used when those objects are created on the BMS.
   getScheduleValues: async (device) => {
     const config = await readConfig();
@@ -384,6 +387,14 @@ app.post("/api/zones/test-ical", async (request, response) => {
 app.get("/api/config", async (_request, response, next) => {
   try {
     response.json({ ...(await readConfig()), zonesSchedules: await readZonesSchedules() });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get("/api/lorawan-payload-catalog", async (_request, response, next) => {
+  try {
+    response.json(await payloadCatalog.get());
   } catch (error) {
     next(error);
   }

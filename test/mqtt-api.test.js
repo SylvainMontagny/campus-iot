@@ -15,6 +15,11 @@ test("serves MQTT status, validates connection settings, and exposes the MQTT vi
   assert.equal(statusResponse.status, 200);
   assert.equal((await statusResponse.json()).state, "disconnected");
 
+  const payloadCatalogResponse = await fetch(`${baseUrl}/api/lorawan-payload-catalog`);
+  assert.equal(payloadCatalogResponse.status, 200);
+  const payloadCatalog = await payloadCatalogResponse.json();
+  assert.ok(payloadCatalog && typeof payloadCatalog === "object" && !Array.isArray(payloadCatalog));
+
   const connectResponse = await fetch(`${baseUrl}/api/mqtt/connect`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },

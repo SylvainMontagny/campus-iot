@@ -4,14 +4,14 @@ const { processRestApiBacnet } = require("../bms-connections/adapters/distech-re
 const { processBacnet } = require("../bms-connections/adapters/bacnet/device-communication");
 const { prepareDownlink, protocolLabel } = require("../lorawan-to-bacnet/downlink");
 const { createLogService } = require("../logs/service");
-const { mapIncomingPacket } = require("../lorawan-to-bacnet/payload-mapping");
+const { extractPayloadCatalogEntry, mapIncomingPacket } = require("../lorawan-to-bacnet/payload-mapping");
 
 const RECONNECT_PERIOD_MS = 20000;
 const SECURE_MQTT_PORTS = [8883, 8884];
 // Our own downlink publications come back when subscribed to a wildcard topic.
 const DOWNLINK_TOPIC = /(\/down\/(push|replace)|\/command\/down|\/downlink)$/;
 // MQTT service: manages broker connection, device processing, logs, and protocol-specific downlink dispatch.
-function createMqttService({ getDeviceProfiles, getScheduleValues, onLog = () => {}, clientFactory = mqtt.connect, restApiBacnetHandler = processRestApiBacnet, bacnetHandler = processBacnet } = {}) {
+function createMqttService({ getDeviceProfiles, getScheduleValues, onPayloadCatalogUpdate, onLog = () => {}, clientFactory = mqtt.connect, restApiBacnetHandler = processRestApiBacnet, bacnetHandler = processBacnet } = {}) {
   const protocolHandlers = { restAPIBacnet: restApiBacnetHandler, bacnet: bacnetHandler };
   const previousValues = {};
   let client = null;
@@ -114,6 +114,14 @@ function createMqttService({ getDeviceProfiles, getScheduleValues, onLog = () =>
         addRawMessage(receivedTopic, payload);
         if (DOWNLINK_TOPIC.test(receivedTopic)) return;
         try {
+          const catalogEntry = extractPayloadCatalogEntry(payload);
+          if (catalogEntry && onPayloadCatalogUpdate) {
+            try {
+              await onPayloadCatalogUpdate(catalogEntry);
+            } catch (error) {
+              addLog("error", `Failed to update LoRaWAN payload catalog: ${error.message || String(error)}`);
+            }
+          }
           const deviceProfiles = await getDeviceProfiles();
           const result = mapIncomingPacket(receivedTopic, payload, deviceProfiles);
           if (result.error) addLog("error", result.error, result.details);

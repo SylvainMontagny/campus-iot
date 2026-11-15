@@ -10,12 +10,15 @@
   expandedZoneDevices: {},
   expandedZoneGroups: {},
   instanceRangeDeviceNums: {},
+  newDeviceProfiles: new Set(),
+  newObjects: new Set(),
   noticeTimer: null,
   mqttLogId: 0,
   mqttRawId: 0,
   paused: { log: false, raw: false },
   authEnabled: false,
-  applicationInitialized: false
+  applicationInitialized: false,
+  lorawanPayloadCatalog: {}
 };
 
 // UI helper: selects the first element matching a CSS selector.
@@ -105,6 +108,10 @@ async function initializeApplication() {
   clearLog("mqtt-raw-log");
   refreshMqtt();
   setInterval(refreshMqtt, 1200);
+  refreshPayloadCatalog().catch((error) => showNotice(`Could not load LoRaWAN payload names: ${error.message}`, "error"));
+  setInterval(() => {
+    refreshPayloadCatalog().catch((error) => showNotice(`Could not refresh LoRaWAN payload names: ${error.message}`, "error"));
+  }, 5000);
 }
 
 async function initializeAuthentication() {
@@ -276,7 +283,7 @@ function makeDevice(name, connectionName) {
 // Device profile editor: creates a new BACnet-to-payload mapping with default settings.
 function makeObject() {
   return {
-    lorawanPayloadName: "payload-name", dataDirection: "uplink", downlinkPort: 30,
+    lorawanPayloadName: "", dataDirection: "uplink", downlinkPort: 30,
     assignementMode: "auto", downlinkStrategy: "compareToUplinkObject", instanceNum: 0,
     downlinkPortPriority: "low", objectType: "analogValue", uplinkToCompareWith: "",
     range: [0, 100], value: 0
@@ -303,9 +310,37 @@ function setPath(object, path, value) {
 
 // Configuration editor: renders an escaped text or numeric input bound to a configuration path.
 function inputField(label, path, value, options = {}) {
-  const { type = "text", wide = false, min, max, step, secret = false, placeholder = "" } = options;
+  const { type = "text", wide = false, min, max, step, secret = false, placeholder = "", list = "" } = options;
   const attrs = [min !== undefined ? `min="${min}"` : "", max !== undefined ? `max="${max}"` : "", step !== undefined ? `step="${step}"` : ""].filter(Boolean).join(" ");
-  return `<label class="field${wide ? " field-wide" : ""}"><span>${escapeHtml(label)}</span><input data-path="${escapeHtml(path)}" type="${secret ? "password" : type}" value="${escapeHtml(value)}" placeholder="${escapeHtml(placeholder)}" ${attrs} autocomplete="off"></label>`;
+  return `<label class="field${wide ? " field-wide" : ""}"><span>${escapeHtml(label)}</span><input data-path="${escapeHtml(path)}" type="${secret ? "password" : type}" value="${escapeHtml(value)}" placeholder="${escapeHtml(placeholder)}" ${list ? `list="${escapeHtml(list)}"` : ""} ${attrs} autocomplete="off"></label>`;
+}
+
+function datalist(id, values, profileAttribute = "") {
+  const options = values.map((value) => `<option value="${escapeHtml(value)}"></option>`).join("");
+  return `<datalist id="${escapeHtml(id)}"${profileAttribute}>${options}</datalist>`;
+}
+
+function updateDatalist(element, values) {
+  if (!element) return;
+  element.replaceChildren(...values.map((value) => {
+    const option = document.createElement("option");
+    option.value = value;
+    return option;
+  }));
+}
+
+async function refreshPayloadCatalog() {
+  const response = await apiFetch("/api/lorawan-payload-catalog");
+  if (!response.ok) throw new Error("Payload catalog endpoint unavailable");
+  const catalog = await response.json();
+  if (!catalog || typeof catalog !== "object" || Array.isArray(catalog)) {
+    throw new Error("Payload catalog response is invalid");
+  }
+  state.lorawanPayloadCatalog = catalog;
+  updateDatalist($("#device-profile-options"), Object.keys(catalog));
+  document.querySelectorAll("datalist[data-payload-profile]").forEach((list) => {
+    updateDatalist(list, catalog[list.dataset.payloadProfile] || []);
+  });
 }
 
 // Configuration editor: renders an escaped select input bound to a configuration path.
@@ -638,7 +673,7 @@ function renderDevice() {
   const assignedConnection = state.config.deviceConnections[name] || "";
   const connectionOptions = [["", "No connection profile"], ...Object.keys(state.config.connections).map((connectionName) => [connectionName, connectionName])];
   const deviceFields = [
-    `<div class="field-row">${inputField("Device profile name", "_name", name)}</div>`,
+    `<div class="field-row field-half">${inputField("Device profile name", "_name", state.newDeviceProfiles.has(name) ? "" : name, { list: "device-profile-options" })}${datalist("device-profile-options", Object.keys(state.lorawanPayloadCatalog))}</div>`,
     `<div class="field-row">${selectField("LoRaWAN class", "lorawan.class", device.lorawan?.class || "A", [["A", "Class A"], ["B", "Class B"], ["C", "Class C"]])}</div>`,
     `<div class="field-row">${selectField("BMS connection", "deviceConnection", assignedConnection, connectionOptions).replace("data-path=", "data-device-connection=")}</div>`,
     `<div class="field-row">${inputField("Maximum number of this device", "identity.maxDevNum", device.identity?.maxDevNum, { type: "number", min: 0, step: 1 })}</div>`,
@@ -775,6 +810,8 @@ async function getProfileBmsObjects() {
 function renderObject(name, object) {
   const downlink = object.dataDirection === "downlink";
   const objectKey = `${state.selectedDevice}::${name}`;
+  const payloadListId = `lorawan-payload-names-${encodeURIComponent(state.selectedDevice)}-${encodeURIComponent(name)}`;
+  const isNewObject = state.newObjects.has(objectKey);
   const objectExpanded = Boolean(state.expandedObjects[objectKey]);
   const range = Array.isArray(object.range) ? object.range : [0, 100];
   const instanceLabel = object.assignementMode === "manual" ? "Instance number" : "Instance number offset";
@@ -784,8 +821,8 @@ function renderObject(name, object) {
   if (object.uplinkToCompareWith && !uplinkNames.includes(object.uplinkToCompareWith)) uplinkNames.push(object.uplinkToCompareWith);
   const uplinkObjectOptions = [["", "Select an uplink object"], ...uplinkNames.map((candidateName) => [candidateName, candidateName])];
   const core = [
-    `<div class="field-row">${inputField("LoRaWAN payload name", "lorawanPayloadName", object.lorawanPayloadName || "")}</div>`,
-    `<div class="field-pair">${inputField("BACnet object name", "_name", name)}${selectField("BACnet Object type", "objectType", object.objectType, [["analogValue", "Analog value"], ["binaryValue", "Binary value"]])}</div>`,
+    `<div class="field-row field-half">${inputField("LoRaWAN payload name", "lorawanPayloadName", isNewObject ? "" : object.lorawanPayloadName || "", { list: payloadListId })}${datalist(payloadListId, state.lorawanPayloadCatalog[state.selectedDevice] || [], ` data-payload-profile="${escapeHtml(state.selectedDevice)}"`)}</div>`,
+    `<div class="field-pair">${inputField("BACnet object name", "_name", isNewObject ? "" : name)}${selectField("BACnet Object type", "objectType", object.objectType, [["analogValue", "Analog value"], ["binaryValue", "Binary value"]])}</div>`,
    
     `<div class="field-pair">${selectField("Assignation mode", "assignementMode", object.assignementMode, [["auto", "Automatic"], ["manual", "Manual"]])}${inputField(instanceLabel, "instanceNum", object.instanceNum, { type: "number", min: 0, step: 1 })}</div>`,
     `<div class="field-row">${selectField("Direction", "dataDirection", object.dataDirection, [["uplink", "Uplink"], ["downlink", "Downlink"]])}</div>`
@@ -1227,6 +1264,8 @@ function renameDevice(oldName, newName) {
     }
     state.selectedDevice = safeName;
   }
+  state.newDeviceProfiles.delete(oldName);
+  state.newDeviceProfiles.delete(safeName);
 }
 
 // BMS connection editor: renames a connection and updates profile assignments.
@@ -1269,6 +1308,8 @@ function renameObject(device, oldName, newName) {
     state.expandedObjects[newKey] = state.expandedObjects[oldKey] || false;
     delete state.expandedObjects[oldKey];
   }
+  state.newObjects.delete(`${state.selectedDevice}::${oldName}`);
+  state.newObjects.delete(`${state.selectedDevice}::${safeName}`);
 }
 
 // Configuration editor: synchronizes each device profile's connection name with its assignment.
@@ -1816,11 +1857,14 @@ document.addEventListener("change", (event) => {
   if (input.matches("#device-editor [data-path]")) {
     const card = input.closest("[data-object-card]");
     if (input.dataset.path === "_name" && card) {
+      const objectKey = `${state.selectedDevice}::${card.dataset.objectCard}`;
+      if (!inputValue(input) && state.newObjects.has(objectKey)) return;
       renameObject(device, card.dataset.objectCard, inputValue(input));
       render();
       return;
     }
     if (input.dataset.path === "_name") {
+      if (!inputValue(input) && state.newDeviceProfiles.has(state.selectedDevice)) return;
       renameDevice(state.selectedDevice, inputValue(input));
       render();
       return;
@@ -1983,6 +2027,7 @@ document.addEventListener("click", async (event) => {
         const name = `${base}${letters(index)}`;
         const connectionName = state.selectedConnection || Object.keys(state.config.connections)[0] || "";
         state.config.deviceProfiles[name] = makeDevice(name, connectionName);
+        state.newDeviceProfiles.add(name);
         state.expandedDevices[name] = true;
         state.selectedDevice = name;
         if (!stayOnCategoryPage) state.selectedView = "device";
@@ -2211,6 +2256,7 @@ document.addEventListener("click", async (event) => {
         const objectName = `${base}-${index}`;
         device.bacnet.objects[objectName] = makeObject();
         device.bacnet.objects[objectName].instanceNum = nextInstanceOffset(device, "analogValue", objectName);
+        state.newObjects.add(`${state.selectedDevice}::${objectName}`);
         state.expandedObjects[`${state.selectedDevice}::${objectName}`] = true;
         break;
       }
