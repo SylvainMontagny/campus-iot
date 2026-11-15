@@ -66,11 +66,28 @@ Campus IoT is designed with a **different approach** compared to other LoRaWAN-B
 3. **Open Source and Free:**
    - LoRaBAC is **free to use** and **open-source** under the **MIT License**, offering full transparency and customization.
 
-### **1.3. Quick Start with Docker:**
+### **1.3. Quick Start with Docker**
 A pre-configured **Node-RED Docker image** is available on [Docker Hub](https://hub.docker.com/r/montagny/node-red/tags). It includes all required packages for easy deployment.
 
+### **1.4. Tested deployments**
+The table below shows the deployment configurations in which Campus IoT has been tested, along with the other services that may be part of the complete workflow:
 
-### **1.4. Support**
+- **Gateway:** The LoRaWAN gateway.
+- **LNS:** In some deployments, the LNS can run on the same system.
+- **Campus IoT:** Our application.
+- **BACnet server:** A BACnet server can also run on the same system, enabling an all-in-one solution.
+
+| Equipment | Gateway | LNS | Campus-IoT | BACnet server | Notes |
+|:---------:|:-------:|:---:|:---------:|:-------------:|:-----:|
+|Distech-Controls APEX      |    ❌     |   ✅  |  ✅       |     ✅         |   Tested with its own BACnet server    |
+|Raspberry Pi      |   ☑️      |   ✅  |  ✅       |     ✅          |       | RPI 3 B+
+
+**Legend**   ✅ Checked; ❌ Doesn't work or NA; ☑️ Not tested, expected to work 
+
+Raspberry Pi
+Any computer
+
+### **1.5. Support**
 For support with LoRaWAN or Campus IoT, please refer to the following resources or [contact us](https://www.univ-smb.fr/lorawan/en/contact/).
 
 :tv: Webinar Replay: [LoRaWAN and BACnet interfaces for Smart Building]()
